@@ -1,0 +1,7 @@
+- [ ] collapsable tags in header
+- [ ] add tab for users to scrape
+- [ ] add scrape by searched keyword
+- [x] have scrape jobs that run on a schedule.
+- [x] figure out ways to optimize the scrape
+    - [x] separate metadata into a separate service
+    - [x] have the scrape service process unscraped metadata

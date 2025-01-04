@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Browser</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+
+        #tags-filter {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .tag-button {
+            margin: 5px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 15px;
+            background-color: #e0e0e0;
+            cursor: pointer;
+        }
+
+        .tag-button.active {
+            background-color: #2196F3;
+            color: white;
+        }
+
+        #videos-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .video-card {
+            position: relative;
+            width: 320px;
+            margin: 10px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .video-content {
+            width: 100%;
+            height: 100%;
+        }
+
+        .delete-confirmation {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 20;
+        }
+
+        .confirmation-message {
+            color: white;
+            padding: 20px;
+        }
+
+        .confirmation-message p {
+            margin-bottom: 20px;
+            font-size: 1.2em;
+        }
+
+        .confirmation-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .confirm-delete, .cancel-delete {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            min-width: 80px;
+        }
+
+        .confirm-delete {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .confirm-delete:hover {
+            background-color: #c82333;
+        }
+
+        .cancel-delete {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .cancel-delete:hover {
+            background-color: #5a6268;
+        }
+
+        .delete-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background-color: rgba(255, 0, 0, 0.7);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+            padding: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .delete-button:hover {
+            background-color: rgba(255, 0, 0, 0.9);
+        }
+
+        .video-thumbnail {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-info {
+            padding: 15px;
+        }
+
+        .video-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 5px;
+        }
+
+        .video-tag {
+            background-color: #e0e0e0;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8em;
+        }
+
+        #tag-search-container {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        #tag-search {
+            width: 200px;
+            padding: 5px;
+            margin-right: 10px;
+        }
+
+        #selected-tags {
+            margin: 10px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .selected-tag {
+            background-color: #2196F3;
+            color: white;
+            padding: 5px 25px 5px 10px;
+            border-radius: 15px;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .selected-tag::after {
+            content: "×";
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .video-tag {
+            cursor: pointer;
+        }
+
+        .video-tag:hover {
+            background-color: #2196F3;
+            color: white;
+        }
+
+        #tag-suggestions {
+            position: absolute;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            width: 200px;
+            display: none;
+            z-index: 1000;
+        }
+
+        .tag-suggestion {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .tag-suggestion:hover {
+            background-color: #f0f0f0;
+        }
+
+        #loading-spinner {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2196F3;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .video-container {
+            position: relative;
+            width: 320px;
+            height: 568px;
+            background-color: #000;
+            cursor: pointer;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        .video-thumbnail {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .thumbnail-loading {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #000;
+        }
+
+        .thumbnail-loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2196F3;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .username-suggestion {
+            color: #2196F3;
+            font-weight: bold;
+        }
+
+        .username-tag {
+            background-color: #2196F3 !important;
+        }
+
+        .tag-suggestion {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .tag-suggestion:hover {
+            background-color: #f0f0f0;
+        }
+
+        .video-container {
+            position: relative;
+        }
+
+        .delete-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background-color: rgba(255, 0, 0, 0.7);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+            padding: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .delete-button:hover {
+            background-color: rgba(255, 0, 0, 0.9);
+        }
+
+        .video-content {
+            display: block;
+            width: 100%;
+        }
+
+        .delete-confirmation {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            border-radius: 8px;
+        }
+
+        #batch-delete-container {
+            display: none;
+            margin-left: 20px;
+            align-items: center;
+        }
+
+        .batch-delete-active #batch-delete-container {
+            display: flex !important;
+        }
+
+        .batch-delete-button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .batch-delete-button:hover {
+            background-color: #c82333;
+        }
+
+        .cancel-batch-button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        .cancel-batch-button:hover {
+            background-color: #5a6268;
+        }
+
+        .video-card.selected-for-delete .video-content {
+            opacity: 0.5;
+        }
+
+        .video-card.selected-for-delete::before {
+            content: '✓';
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: #28a745;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 15;
+            font-weight: bold;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 20px;
+            z-index: 100;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .filter-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin: 10px 0;
+        }
+
+        .filter-input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-width: 200px;
+            font-size: 14px;
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+
+        #batch-delete-container {
+            display: none;
+            margin-left: 20px;
+        }
+
+        .batch-delete-button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .batch-delete-button:hover {
+            background-color: #c82333;
+        }
+
+        .cancel-batch-button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        .cancel-batch-button:hover {
+            background-color: #5a6268;
+        }
+
+        #videos-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+            margin-top: 160px;
+        }
+
+        .video-card {
+            width: 320px;
+            margin: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .video-thumbnail-container {
+            position: relative;
+            width: 320px;
+            height: 568px;
+            background-color: #000;
+            cursor: pointer;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        .filter-toggles {
+            display: flex;
+            gap: 15px;
+            margin-left: 15px;
+            align-items: center;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+            margin-right: 35px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        .toggle-label {
+            position: absolute;
+            right: -35px;
+            top: 2px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: #2196F3;
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        .select-visible-button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .select-visible-button:hover {
+            background-color: #218838;
+        }
+
+        #batch-delete-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: 20px;
+        }
+
+        .tag-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            min-width: 200px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .tag-suggestion {
+            padding: 8px 12px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+
+        .tag-suggestion:hover {
+            background-color: #f0f0f0;
+        }
+
+        .selected-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .selected-filter {
+            background-color: #007bff;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .selected-filter button {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 0 4px;
+            font-size: 16px;
+        }
+
+        .selected-filter button:hover {
+            background-color: rgba(255,255,255,0.2);
+            border-radius: 50%;
+        }
+
+        .batch-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .batch-tag-input-container {
+            position: relative;
+        }
+
+        .batch-tag-input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-width: 200px;
+            font-size: 14px;
+        }
+
+        .batch-tag-input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Video Browser</h1>
+        <div class="filter-container">
+            <input type="text"
+                   id="filter-input"
+                   class="filter-input"
+                   placeholder="Filter by tag...">
+            <div class="filter-toggles">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="or-filter-toggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">OR</span>
+                </label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="not-filter-toggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">NOT</span>
+                </label>
+            </div>
+            <div id="tag-suggestions" class="tag-suggestions"></div>
+            <div id="selected-filters" class="selected-filters"></div>
+            <div id="batch-delete-container">
+                <button id="select-visible-button" class="select-visible-button" onclick="selectVisibleVideos()">
+                    Select Visible
+                </button>
+                <div class="batch-actions">
+                    <div class="batch-tag-input-container">
+                        <input type="text"
+                               id="batch-tag-input"
+                               class="batch-tag-input"
+                               placeholder="Add tag to selected..."
+                               style="display: none;">
+                        <div id="batch-tag-suggestions" class="tag-suggestions"></div>
+                    </div>
+                    <button id="batch-delete-button" class="batch-delete-button" onclick="confirmBatchDelete()">
+                        Delete Selected (<span id="selected-count">0</span>)
+                    </button>
+                    <button id="cancel-batch-delete" class="cancel-batch-button" onclick="cancelBatchSelection()">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="videos-grid" class="videos-grid">
+        <!-- Videos will be inserted here -->
+    </div>
+
+    <div id="loading-spinner">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        const allFilters = {{ filters|tojson|safe }};
+        const allVideos = {{ videos|tojson|safe }};
+        let selectedFilters = new Set();
+        let selectedForDelete = new Set();
+        let currentPage = 0;
+        const videosPerPage = 30;
+        const scrollThreshold = 1000;
+        let isLoading = false;
+        let filteredVideos = [];
+        let useOrFilter = false;
+        let useNotFilter = false;
+
+        // Add global click handler for tag suggestions
+        document.addEventListener('click', function(event) {
+            console.log('Click event target:', event.target);
+
+            // Check if clicked element is a tag suggestion
+            if (event.target.classList.contains('tag-suggestion')) {
+                const tag = event.target.textContent;
+                console.log('Tag suggestion clicked:', tag);
+                addFilter(tag);
+                return;
+            }
+
+            // Handle clicking outside suggestions
+            const suggestions = document.getElementById('tag-suggestions');
+            if (suggestions && !event.target.closest('#filter-input') && !event.target.closest('#tag-suggestions')) {
+                suggestions.style.display = 'none';
+            }
+        });
+
+        // Update handleFilterInput
+        function handleFilterInput(event) {
+            const input = event.target.value.toLowerCase();
+            const suggestions = document.getElementById('tag-suggestions');
+
+            console.log('Filter input value:', input);
+
+            if (!suggestions || input.length === 0) {
+                if (suggestions) suggestions.style.display = 'none';
+                return;
+            }
+
+            const matches = allFilters.filter(filter =>
+                filter.toLowerCase().includes(input) &&
+                !selectedFilters.has(filter)
+            );
+
+            console.log('Matching tags:', matches);
+
+            if (matches.length > 0) {
+                suggestions.innerHTML = matches
+                    .map(match => `<div class="tag-suggestion">${match}</div>`)
+                    .join('');
+                suggestions.style.display = 'block';
+            } else {
+                suggestions.style.display = 'none';
+            }
+        }
+
+        function handleFilterKeydown(event) {
+            if (event.key === 'Enter' && event.target.value) {
+                addFilter(event.target.value);
+                event.target.value = '';
+            }
+        }
+
+        function handleClickOutside(event) {
+            const suggestions = document.getElementById('tag-suggestions');
+            if (!event.target.closest('#filter-input') && !event.target.closest('#tag-suggestions')) {
+                suggestions.style.display = 'none';
+            }
+        }
+
+        // Update addFilter
+        function addFilter(filter) {
+            console.log('addFilter called with:', filter);
+
+            if (!filter || filter.trim() === '') {
+                console.log('Empty filter, ignoring');
+                return;
+            }
+
+            const trimmedFilter = filter.trim();
+            console.log('Adding trimmed filter:', trimmedFilter);
+
+            selectedFilters.add(trimmedFilter);
+            console.log('Current selected filters:', selectedFilters);
+
+            updateSelectedFilters();
+            resetAndFilterVideos();
+
+            // Clear input and suggestions
+            const filterInput = document.getElementById('filter-input');
+            const suggestions = document.getElementById('tag-suggestions');
+            if (filterInput) filterInput.value = '';
+            if (suggestions) {
+                suggestions.style.display = 'none';
+            }
+        }
+
+        function removeFilter(filter) {
+            selectedFilters.delete(filter);
+            updateSelectedFilters();
+            resetAndFilterVideos();
+        }
+
+        function updateSelectedFilters() {
+            const container = document.getElementById('selected-filters');
+            container.innerHTML = Array.from(selectedFilters)
+                .map(filter => `
+                    <span class="selected-filter">
+                        ${filter}
+                        <button onclick="removeFilter('${filter}')">&times;</button>
+                    </span>
+                `).join('');
+        }
+
+        function filterVideos() {
+            console.log('Filtering videos with filters:', selectedFilters);
+            let filtered = [...allVideos];
+
+            if (selectedFilters.size > 0) {
+                filtered = filtered.filter(video => {
+                    const videoTags = (video.tags || []).map(tag => tag.toLowerCase());
+                    const videoUsername = video.username ? `@${video.username}`.toLowerCase() : '';
+
+                    const usernameFilters = new Set();
+                    const tagFilters = new Set();
+
+                    selectedFilters.forEach(filter => {
+                        if (filter.startsWith('@')) {
+                            usernameFilters.add(filter.toLowerCase());
+                        } else {
+                            tagFilters.add(filter.toLowerCase());
+                        }
+                    });
+
+                    // Username filtering (always OR)
+                    if (usernameFilters.size > 0) {
+                        if (!usernameFilters.has(videoUsername)) {
+                            return false;
+                        }
+                    }
+
+                    // Tag filtering
+                    if (tagFilters.size > 0) {
+                        const tagMatch = useOrFilter
+                            ? Array.from(tagFilters).some(tag => videoTags.includes(tag))  // OR
+                            : Array.from(tagFilters).every(tag => videoTags.includes(tag)); // AND
+
+                        return useNotFilter ? !tagMatch : tagMatch;
+                    }
+
+                    return true;
+                });
+            }
+
+            // Sort by date
+            filtered.sort((a, b) => {
+                const dateA = new Date(a.upload_date || 0);
+                const dateB = new Date(b.upload_date || 0);
+                return dateB - dateA;
+            });
+
+            console.log('Filtered videos count:', filtered.length);
+            return filtered;
+        }
+
+        function resetAndFilterVideos() {
+            console.log('Resetting and filtering videos...');
+            currentPage = 0;
+            filteredVideos = filterVideos();
+            const container = document.getElementById('videos-grid');
+            if (container) {
+                container.innerHTML = '';
+                loadMoreVideos();
+            } else {
+                console.error('Video container not found: videos-grid');
+            }
+        }
+
+        function loadMoreVideos() {
+            if (isLoading) return;
+            isLoading = true;
+
+            const container = document.getElementById('videos-grid');
+            if (!container) {
+                console.error('Video container not found: videos-grid');
+                isLoading = false;
+                return;
+            }
+
+            const start = currentPage * videosPerPage;
+            const end = start + videosPerPage;
+            const videosToLoad = filteredVideos.slice(start, end);
+
+            if (videosToLoad.length > 0) {
+                const temp = document.createElement('div');
+                videosToLoad.forEach(video => {
+                    temp.innerHTML += createVideoCard(video);
+                });
+
+                while (temp.firstChild) {
+                    container.appendChild(temp.firstChild);
+                }
+
+                currentPage++;
+            }
+
+            isLoading = false;
+        }
+
+        function debugVideoLoading() {
+            console.log('Total videos:', allVideos.length);
+            console.log('Filtered videos:', filteredVideos.length);
+            console.log('Current page:', currentPage);
+            console.log('Videos per page:', videosPerPage);
+        }
+
+        function setupInfiniteScroll() {
+            window.addEventListener('scroll', () => {
+                if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
+                    loadMoreVideos();
+                }
+            });
+        }
+
+        // Initialize the application
+        function initializeApp() {
+            console.log('Initializing app...');
+
+            // Initialize tag search
+            initializeTagSearch();
+
+            // Initial load of videos
+            resetAndFilterVideos();
+
+            // Setup infinite scroll
+            setupInfiniteScroll();
+
+            // Setup filter toggles
+            const orToggle = document.getElementById('or-filter-toggle');
+            const notToggle = document.getElementById('not-filter-toggle');
+
+            if (orToggle) {
+                orToggle.addEventListener('change', function() {
+                    useOrFilter = this.checked;
+                    resetAndFilterVideos();
+                });
+            }
+
+            if (notToggle) {
+                notToggle.addEventListener('change', function() {
+                    useNotFilter = this.checked;
+                    resetAndFilterVideos();
+                });
+            }
+        }
+
+        function initializeTagSearch() {
+            const filterInput = document.getElementById('filter-input');
+            const tagSuggestions = document.getElementById('tag-suggestions');
+
+            if (filterInput && tagSuggestions) {
+                // Remove any existing listeners
+                filterInput.removeEventListener('input', handleFilterInput);
+                filterInput.removeEventListener('keydown', handleFilterKeydown);
+
+                // Add listeners
+                filterInput.addEventListener('input', handleFilterInput);
+                filterInput.addEventListener('keydown', handleFilterKeydown);
+            }
+        }
+
+        // Make sure we only initialize once
+        let initialized = false;
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!initialized) {
+                console.log('DOM loaded, initializing app...');
+                initialized = true;
+                initializeApp();
+            }
+        });
+
+        function createVideoCard(video) {
+            return `
+                <div class="video-card" data-video-id="${video.video_id}">
+                    <div class="video-content">
+                        <div class="video-thumbnail-container">
+                            ${video.has_thumbnail ?
+                                `<img src="/thumbnail/${video.thumbnail_path}"
+                                      class="video-thumbnail"
+                                      onclick="playVideo(this, '${video.video_path}')"
+                                      alt="Video thumbnail">` :
+                                `<div class="thumbnail-loading" data-video-path="${video.video_path}" data-thumbnail-path="${video.thumbnail_path}">
+                                    <div class="spinner"></div>
+                                </div>`
+                            }
+                            <button class="delete-button"
+                                    onclick="showDeleteConfirmation(event)">
+                                ×
+                            </button>
+                        </div>
+                        <div class="video-info">
+                            ${video.description ? `<div class="video-description">${video.description.slice(0, 100)}...</div>` : ''}
+                            <div class="video-tags">
+                                ${(video.tags || []).map(tag =>
+                                    `<span class="video-tag" onclick="addFilter('${tag}')">${tag}</span>`
+                                ).join('')}
+                                ${video.username ?
+                                    `<span class="video-tag username-tag" onclick="addFilter('@${video.username}')">@${video.username}</span>`
+                                    : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="delete-confirmation"
+                         data-video-path="${video.video_path}"
+                         data-thumbnail-path="${video.thumbnail_path}"
+                         data-video-id="${video.video_id}">
+                        <div class="confirmation-message">
+                            <p>Delete this video?</p>
+                            <div class="confirmation-buttons">
+                                <button class="confirm-delete" onclick="confirmDelete(event)">Delete</button>
+                                <button class="cancel-delete" onclick="cancelDelete(event)">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function playVideo(thumbnail, videoPath) {
+            const container = thumbnail.parentElement;
+            const video = document.createElement('video');
+            video.src = `/video/${videoPath}`;
+            video.controls = true;
+            video.style.width = '100%';
+            video.style.height = '100%';
+            container.replaceChild(video, thumbnail);
+            video.play();
+        }
+
+        function showDeleteConfirmation(event) {
+            event.stopPropagation();
+            const card = event.target.closest('.video-card');
+            const videoId = card.dataset.videoId;
+
+            if (selectedForDelete.size > 0 || event.shiftKey) {
+                // Batch delete mode
+                toggleCardSelection(card, videoId);
+            } else {
+                // Single delete mode
+                const videoContent = card.querySelector('.video-content');
+                const confirmation = card.querySelector('.delete-confirmation');
+                videoContent.style.opacity = '0.3';
+                confirmation.style.display = 'flex';
+            }
+        }
+
+        function toggleCardSelection(card, videoId) {
+            if (selectedForDelete.has(videoId)) {
+                selectedForDelete.delete(videoId);
+                card.classList.remove('selected-for-delete');
+            } else {
+                selectedForDelete.add(videoId);
+                card.classList.add('selected-for-delete');
+            }
+
+            updateBatchDeleteUI();
+        }
+
+        function updateBatchDeleteUI() {
+            const container = document.getElementById('batch-delete-container');
+            const count = document.getElementById('selected-count');
+            const header = document.querySelector('.header');
+            const batchTagInput = document.getElementById('batch-tag-input');
+
+            if (selectedForDelete.size > 0) {
+                header.classList.add('batch-delete-active');
+                container.style.display = 'flex';
+                batchTagInput.style.display = 'block';
+                count.textContent = selectedForDelete.size;
+            } else {
+                header.classList.remove('batch-delete-active');
+                container.style.display = 'none';
+                batchTagInput.style.display = 'none';
+                count.textContent = '0';
+            }
+        }
+
+        function cancelDelete(event) {
+            event.stopPropagation();
+            const card = event.target.closest('.video-card');
+            const videoContent = card.querySelector('.video-content');
+            const confirmation = card.querySelector('.delete-confirmation');
+
+            videoContent.style.opacity = '1';
+            confirmation.style.display = 'none';
+        }
+
+        function cancelBatchSelection() {
+            selectedForDelete.clear();
+            document.querySelectorAll('.video-card.selected-for-delete').forEach(card => {
+                card.classList.remove('selected-for-delete');
+            });
+            updateBatchDeleteUI();
+        }
+
+        async function confirmDelete(event) {
+            event.stopPropagation();
+            const card = event.target.closest('.video-card');
+            const confirmation = card.querySelector('.delete-confirmation');
+            const videoPath = confirmation.dataset.videoPath;
+            const thumbnailPath = confirmation.dataset.thumbnailPath;
+            const videoId = confirmation.dataset.videoId;
+
+            try {
+                // Use the batch delete endpoint with a single video
+                const response = await fetch('/batch_delete_videos', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        videos: [{
+                            video_id: videoId,
+                            video_path: videoPath,
+                            thumbnail_path: thumbnailPath
+                        }]
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success && data.results[0].success) {
+                    // Remove from arrays
+                    const index = allVideos.findIndex(v => v.video_id === videoId);
+                    if (index > -1) {
+                        allVideos.splice(index, 1);
+                    }
+
+                    const filteredIndex = filteredVideos.findIndex(v => v.video_id === videoId);
+                    if (filteredIndex > -1) {
+                        filteredVideos.splice(filteredIndex, 1);
+                    }
+
+                    card.remove();
+                } else {
+                    alert('Error deleting video: ' + (data.results[0].error || data.error || 'Unknown error'));
+                    cancelDelete(event);
+                }
+            } catch (error) {
+                alert('Error deleting video: ' + error);
+                cancelDelete(event);
+            }
+        }
+
+        async function confirmBatchDelete() {
+            if (!confirm(`Are you sure you want to delete ${selectedForDelete.size} videos?`)) {
+                return;
+            }
+
+            // Collect all video data
+            const videosToDelete = Array.from(selectedForDelete).map(videoId => {
+                const card = document.querySelector(`.video-card[data-video-id="${videoId}"]`);
+                const confirmation = card.querySelector('.delete-confirmation');
+                return {
+                    video_id: videoId,
+                    video_path: confirmation.dataset.videoPath,
+                    thumbnail_path: confirmation.dataset.thumbnailPath
+                };
+            });
+
+            try {
+                const response = await fetch('/batch_delete_videos', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        videos: videosToDelete
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Process results and remove deleted videos
+                    data.results.forEach(result => {
+                        if (result.success) {
+                            const videoId = result.video_id;
+                            // Remove from arrays
+                            const index = allVideos.findIndex(v => v.video_id === videoId);
+                            if (index > -1) {
+                                allVideos.splice(index, 1);
+                            }
+
+                            const filteredIndex = filteredVideos.findIndex(v => v.video_id === videoId);
+                            if (filteredIndex > -1) {
+                                filteredVideos.splice(filteredIndex, 1);
+                            }
+
+                            // Remove from DOM
+                            const card = document.querySelector(`.video-card[data-video-id="${videoId}"]`);
+                            if (card) card.remove();
+                        }
+                    });
+
+                    alert(data.summary);
+                } else {
+                    alert('Error during batch delete: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error during batch delete: ' + error);
+            }
+
+            selectedForDelete.clear();
+            updateBatchDeleteUI();
+        }
+
+        // Add keyboard shortcut for batch selection mode
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                cancelBatchSelection();
+            }
+        });
+
+        // Add event listeners for the toggles
+        document.addEventListener('DOMContentLoaded', function() {
+            const orToggle = document.getElementById('or-filter-toggle');
+            const notToggle = document.getElementById('not-filter-toggle');
+
+            orToggle.addEventListener('change', function() {
+                useOrFilter = this.checked;
+                resetAndFilterVideos();
+            });
+
+            notToggle.addEventListener('change', function() {
+                useNotFilter = this.checked;
+                resetAndFilterVideos();
+            });
+        });
+
+        function selectVisibleVideos() {
+            // Get all visible video cards
+            const visibleCards = Array.from(document.querySelectorAll('.video-card')).filter(card => {
+                const rect = card.getBoundingClientRect();
+                return rect.top >= 0 && rect.bottom <= window.innerHeight;
+            });
+
+            // Select each visible card
+            visibleCards.forEach(card => {
+                const videoId = card.dataset.videoId;
+                if (!selectedForDelete.has(videoId)) {
+                    selectedForDelete.add(videoId);
+                    card.classList.add('selected-for-delete');
+                }
+            });
+
+            updateBatchDeleteUI();
+        }
+
+        // Add a new function to handle tag selection
+        function handleTagSelect(tag) {
+            console.log('Tag selected:', tag);
+            addFilter(tag);
+        }
+
+        // Update the tag suggestion styling to ensure it's clickable
+        document.addEventListener('DOMContentLoaded', function() {
+            const style = document.createElement('style');
+            style.textContent = `
+                .tag-suggestions {
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    background: white;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    z-index: 1000;
+                    min-width: 200px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                }
+
+                .tag-suggestion {
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    user-select: none;
+                    transition: background-color 0.2s;
+                }
+
+                .tag-suggestion:hover {
+                    background-color: #f0f0f0;
+                }
+            `;
+            document.head.appendChild(style);
+        });
+
+        function handleBatchTagInput(event) {
+            const input = event.target.value.toLowerCase();
+            const suggestions = document.getElementById('batch-tag-suggestions');
+
+            if (!suggestions || input.length === 0) {
+                if (suggestions) suggestions.style.display = 'none';
+                return;
+            }
+
+            const matches = allFilters.filter(filter =>
+                filter.toLowerCase().includes(input)
+            );
+
+            if (matches.length > 0) {
+                suggestions.innerHTML = matches
+                    .map(match => `<div class="tag-suggestion" data-tag="${match}">${match}</div>`)
+                    .join('');
+                suggestions.style.display = 'block';
+            } else {
+                suggestions.style.display = 'none';
+            }
+        }
+
+        async function addTagToSelected(tag) {
+            if (!tag || selectedForDelete.size === 0) return;
+
+            const videoIds = Array.from(selectedForDelete);
+            console.log(`Adding tag "${tag}" to ${videoIds.length} videos`);
+
+            try {
+                const response = await fetch('/add_tag_to_videos', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        video_ids: videoIds,
+                        tag: tag
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update the local video data
+                    videoIds.forEach(videoId => {
+                        const video = allVideos.find(v => v.video_id === videoId);
+                        if (video) {
+                            if (!video.tags) video.tags = [];
+                            if (!video.tags.includes(tag)) {
+                                video.tags.push(tag);
+                            }
+                        }
+                    });
+
+                    // Update the UI
+                    resetAndFilterVideos();
+                    alert(`Added tag "${tag}" to ${videoIds.length} videos`);
+                } else {
+                    alert('Error adding tag: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error adding tag: ' + error);
+            }
+        }
+
+        // Add initialization for batch tag input
+        document.addEventListener('DOMContentLoaded', function() {
+            const batchTagInput = document.getElementById('batch-tag-input');
+            const batchTagSuggestions = document.getElementById('batch-tag-suggestions');
+
+            if (batchTagInput && batchTagSuggestions) {
+                batchTagInput.addEventListener('input', handleBatchTagInput);
+                batchTagInput.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter' && event.target.value) {
+                        addTagToSelected(event.target.value);
+                        event.target.value = '';
+                    }
+                });
+
+                // Handle tag suggestion clicks
+                batchTagSuggestions.addEventListener('click', function(event) {
+                    const tagElement = event.target.closest('.tag-suggestion');
+                    if (tagElement) {
+                        const tag = tagElement.dataset.tag;
+                        addTagToSelected(tag);
+                        batchTagInput.value = '';
+                        batchTagSuggestions.style.display = 'none';
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

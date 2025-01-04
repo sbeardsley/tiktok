@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  url_discovery:
+    build:
+      context: .
+      dockerfile: services/discovery.Dockerfile
+    volumes:
+      - ./downloads:/app/downloads
+      - ./usernames.md:/app/usernames.md
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    restart: unless-stopped
+
+  metadata_service:
+    build:
+      context: .
+      dockerfile: services/metadata.Dockerfile
+    volumes:
+      - ./downloads:/app/downloads
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    restart: unless-stopped
+
+  video_downloader:
+    build:
+      context: .
+      dockerfile: services/downloader.Dockerfile
+    volumes:
+      - ./downloads:/app/downloads
+    depends_on:
+      - redis
+      - metadata_service
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    restart: unless-stopped
+
+volumes:
+  redis_data:
