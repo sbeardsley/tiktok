@@ -587,5 +587,60 @@ def add_video():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/videos/bulk-delete", methods=["POST"])
+def batch_delete_videos():
+    """Delete multiple videos at once."""
+    try:
+        data = request.get_json()
+        videos_to_delete = data.get(
+            "video_ids", []
+        )  # Changed from "videos" to "video_ids" to match frontend
+
+        if not videos_to_delete:
+            return jsonify({"success": False, "error": "No videos specified"}), 400
+
+        success_count = 0
+        results = []
+
+        for video_id in videos_to_delete:
+            try:
+                # Find the metadata key for this video_id
+                matching_keys = redis_client.keys(f"metadata:*:{video_id}")
+                if not matching_keys:
+                    results.append(
+                        {
+                            "video_id": video_id,
+                            "success": False,
+                            "error": "Video not found",
+                        }
+                    )
+                    continue
+
+                metadata_key = matching_keys[0]
+
+                # Mark as deleted in Redis
+                redis_client.hset(metadata_key, "deleted", "True")
+
+                success_count += 1
+                results.append({"video_id": video_id, "success": True})
+
+            except Exception as e:
+                results.append(
+                    {"video_id": video_id, "success": False, "error": str(e)}
+                )
+
+        return jsonify(
+            {
+                "success": True,
+                "results": results,
+                "summary": f"Successfully deleted {success_count} out of {len(videos_to_delete)} videos",
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in batch delete: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

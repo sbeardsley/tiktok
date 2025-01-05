@@ -1,25 +1,56 @@
-let initialized = false;
+// Use a more specific global flag and initialization tracking
+window._videoAppInitialized = window._videoAppInitialized || false;
+window._videoAppInitializing = window._videoAppInitializing || false;
 
+// Define initializeApp first
 function initializeApp() {
-    // Prevent double initialization
-    if (initialized) {
-        console.log('App already initialized, skipping...');
+    if (window._videoAppInitialized || window._videoAppInitializing) {
+        console.log('Initialization already in progress or completed');
         return;
     }
 
-    window.currentPage = -1;  // Start at -1 so first loadMoreVideos() gets page 0
+    window._videoAppInitializing = true;
+    console.log('Starting initialization...');
+
+    // Initialize global variables
+    window.currentPage = -1;
     window.filteredVideos = [];
     window.selectedFilters = new Set();
     window.hasMoreVideos = true;
     window.isLoading = false;
+    window.selectedVideos = new Set();
+    window.selectionMode = false;
+    window.videosPerPage = 20;
 
-    console.log('Initializing app...');
-    loadMoreVideos();  // Load first page
+    // Hide batch actions initially
+    const batchActions = document.querySelector('.batch-actions');
+    if (batchActions) {
+        batchActions.style.display = 'none';
+    }
+
+    console.log('Setting up components...');
     setupInfiniteScroll();
     setupFilterHandlers();
+    setupSelectionMode();
 
-    initialized = true;
+    // Load first page
+    console.log('Loading initial videos...');
+    loadMoreVideos();
+
+    window._videoAppInitialized = true;
+    window._videoAppInitializing = false;
 }
+
+// Single initialization point with defensive check
+document.addEventListener('DOMContentLoaded', () => {
+    if (window._videoAppInitialized || window._videoAppInitializing) {
+        console.log('App already initialized or initializing, skipping...');
+        return;
+    }
+
+    console.log('Starting fresh initialization...');
+    initializeApp();
+});
 
 function setupFilterHandlers() {
     const filterInput = document.getElementById('filter-input');
@@ -90,16 +121,18 @@ function setupInfiniteScroll() {
 
 function loadMoreVideos() {
     if (window.isLoading || !window.hasMoreVideos) {
+        console.log('Skipping load: loading=', window.isLoading, 'hasMore=', window.hasMoreVideos);
         return;
     }
 
-    const nextPage = window.currentPage + 1;
+    const nextPage = window.currentPage + 1;  // Will start at page 0
     window.isLoading = true;
+    console.log('Loading page:', nextPage);
 
     // Build query parameters including filters
     const params = new URLSearchParams({
         page: nextPage,
-        per_page: window.videosPerPage
+        per_page: window.videosPerPage || 20
     });
 
     // Add filters and filter type if any are selected
@@ -118,23 +151,27 @@ function loadMoreVideos() {
         }
     }
 
+    const url = `/api/videos?${params.toString()}`;
+    console.log('Fetching videos with URL:', url); // Debug log
+
     // Fetch the next page of videos with filters
-    fetch(`/api/videos?${params.toString()}`)
+    fetch(url)
         .then(response => response.json())
         .then(data => {
+            console.log('Received data:', data);
             if (data.videos && data.videos.length > 0) {
-                window.currentPage = nextPage;
-                // Append only the new videos
+                window.currentPage = nextPage;  // Update current page after successful load
                 window.filteredVideos = window.filteredVideos.concat(data.videos);
-                // Display only the new page of videos
                 displayVideos(data.videos);
                 window.hasMoreVideos = data.has_more;
+                console.log('Loaded page', nextPage, 'with', data.videos.length, 'videos');
             } else {
                 window.hasMoreVideos = false;
+                console.log('No more videos available');
             }
         })
         .catch(error => {
-            console.error('Error loading more videos:', error);
+            console.error('Error loading videos:', error);
         })
         .finally(() => {
             window.isLoading = false;
@@ -205,10 +242,32 @@ function handleFilterKeydown(event) {
     }
 }
 
-function addFilter(filter) {
-    window.selectedFilters.add(filter);
-    updateSelectedFiltersDisplay();
+function addFilter(tag) {
+    if (!tag) return;
+
+    console.log('Adding filter:', tag); // Debug log
+
+    // Add the tag directly to the Set
+    window.selectedFilters.add(tag);
+
+    // Update UI and reload videos
+    updateFilterUI();
     resetAndFilterVideos();
+}
+
+function updateFilterUI() {
+    const container = document.getElementById('selected-filters');
+    container.innerHTML = '';
+
+    window.selectedFilters.forEach(tag => {
+        const filterTag = document.createElement('div');
+        filterTag.className = 'filter-tag';
+        filterTag.innerHTML = `
+            ${tag}
+            <span class="remove-tag" onclick="removeFilter('${tag}')">×</span>
+        `;
+        container.appendChild(filterTag);
+    });
 }
 
 function removeFilter(filter) {
@@ -234,6 +293,11 @@ function createVideoCard(video) {
     card.className = 'video-card';
     card.dataset.videoId = video.video_id;
 
+    // Add selection indicator
+    const selectionIndicator = document.createElement('div');
+    selectionIndicator.className = 'selection-indicator';
+    selectionIndicator.textContent = '✓';
+
     // Parse author string
     let displayName = video.username; // Default to username from metadata
     let relativeTime = video.author.split('·')[1];
@@ -257,42 +321,49 @@ function createVideoCard(video) {
         }
     }
 
-    card.innerHTML = `
-        <div class="video-content">
-            <div class="video-thumbnail-container">
-                ${video.has_thumbnail ?
-                    `<img src="/thumbnail/${video.thumbnail_path}"
-                          class="video-thumbnail"
-                          onclick="playVideo(this, '${video.video_path}')"
-                          alt="Video thumbnail">` :
-                    `<div class="thumbnail-loading">
-                        <div class="spinner"></div>
-                    </div>`
-                }
-                <button class="delete-button" onclick="showDeleteConfirmation(event)">×</button>
+    const videoContent = document.createElement('div');
+    videoContent.className = 'video-content';
+    videoContent.innerHTML = `
+        <div class="video-thumbnail-container">
+            ${video.has_thumbnail ?
+                `<img src="/thumbnail/${video.thumbnail_path}"
+                      class="video-thumbnail"
+                      onclick="playVideo(this, '${video.video_path}')"
+                      alt="Video thumbnail">` :
+                `<div class="thumbnail-loading">
+                    <div class="spinner"></div>
+                </div>`
+            }
+            <button class="delete-button" onclick="showDeleteConfirmation(event)">×</button>
+        </div>
+        <div class="video-info">
+            <div class="author-container">
+                <h3 class="author">${displayName}</h3>
+                <span class="time">${relativeTime}</span>
             </div>
-            <div class="video-info">
-                <div class="author-container">
-                    <h3 class="author">${displayName}</h3>
-                    <span class="time">${relativeTime}</span>
-                </div>
-                ${video.description ?
-                    `<div class="video-description">${video.description.slice(0, 100)}...</div>` :
+            ${video.description ?
+                `<div class="video-description">${video.description.slice(0, 100)}...</div>` :
+                ''
+            }
+            <div class="video-tags">
+                ${(video.tags || [])
+                    .map(tag => `<span class="video-tag" onclick="addFilter('${tag}')">${tag}</span>`)
+                    .join('')
+                }
+                ${video.username ?
+                    `<span class="video-tag username-tag" onclick="addFilter('@${video.username}')">@${video.username}</span>` :
                     ''
                 }
-                <div class="video-tags">
-                    ${(video.tags || [])
-                        .map(tag => `<span class="video-tag" onclick="addFilter('${tag}')">${tag}</span>`)
-                        .join('')
-                    }
-                    ${video.username ?
-                        `<span class="video-tag username-tag" onclick="addFilter('@${video.username}')">@${video.username}</span>` :
-                        ''
-                    }
-                </div>
             </div>
         </div>
     `;
+
+    // Add click handler for selection
+    card.addEventListener('click', handleVideoCardClick);
+
+    // Append elements in the correct order
+    card.appendChild(selectionIndicator);
+    card.appendChild(videoContent);
 
     return card;
 }
@@ -386,4 +457,515 @@ function addFilterAndHideSuggestions(filter) {
     // Hide suggestions
     const suggestions = document.getElementById('tag-suggestions');
     suggestions.style.display = 'none';
+}
+
+function showDeleteConfirmation(event) {
+    // Prevent the click from propagating to the video
+    event.stopPropagation();
+
+    // Find the video card
+    const videoCard = event.target.closest('.video-card');
+    const videoContent = videoCard.querySelector('.video-content');
+
+    // Check if confirmation is already showing
+    if (videoCard.querySelector('.delete-confirmation')) {
+        return;
+    }
+
+    // Create and insert confirmation overlay
+    const confirmation = document.createElement('div');
+    confirmation.className = 'delete-confirmation';
+    confirmation.innerHTML = `
+        <div class="delete-message">Delete this video?</div>
+        <div class="delete-buttons">
+            <button class="delete-confirm">Delete</button>
+            <button class="delete-cancel">Cancel</button>
+        </div>
+    `;
+
+    // Add event listeners
+    confirmation.querySelector('.delete-confirm').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteVideo(videoCard.dataset.videoId, videoCard);
+    });
+
+    confirmation.querySelector('.delete-cancel').addEventListener('click', (e) => {
+        e.stopPropagation();
+        confirmation.remove();
+    });
+
+    videoContent.appendChild(confirmation);
+}
+
+// Add CSS for the delete confirmation
+const deleteStyle = document.createElement('style');
+deleteStyle.textContent = `
+    .delete-confirmation {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 15px;
+        z-index: 1000;
+    }
+
+    .delete-message {
+        color: white;
+        font-size: 1.2em;
+        text-align: center;
+    }
+
+    .delete-buttons {
+        display: flex;
+        gap: 10px;
+    }
+
+    .delete-buttons button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+
+    .delete-confirm {
+        background: #dc3545;
+        color: white;
+    }
+
+    .delete-confirm:hover {
+        background: #c82333;
+    }
+
+    .delete-cancel {
+        background: #6c757d;
+        color: white;
+    }
+
+    .delete-cancel:hover {
+        background: #5a6268;
+    }
+
+    .video-content {
+        position: relative;
+    }
+`;
+document.head.appendChild(deleteStyle);
+
+function deleteVideo(videoId, videoCard) {
+    // Use the bulk delete endpoint with a single video ID
+    fetch('/api/videos/bulk-delete', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ video_ids: [videoId] })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove the video card from the UI with a fade effect
+            videoCard.style.transition = 'opacity 0.3s ease';
+            videoCard.style.opacity = '0';
+            setTimeout(() => {
+                videoCard.remove();
+            }, 300);
+        } else {
+            alert('Error deleting video: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error deleting video. Please try again.');
+    });
+}
+
+// Add CSS for video card selection
+const selectionStyle = document.createElement('style');
+selectionStyle.textContent = `
+    .video-card {
+        position: relative;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .video-card.selected {
+        outline: 3px solid #007bff;
+    }
+
+    .selection-indicator {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #007bff;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        z-index: 10;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+
+    .video-card.selected .selection-indicator {
+        opacity: 1;
+    }
+
+    .video-card:hover .selection-indicator {
+        opacity: 0.5;
+    }
+
+    .video-card.selected:hover .selection-indicator {
+        opacity: 1;
+    }
+
+    .selection-mode-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: bold;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        z-index: 1000;
+        transition: background-color 0.2s;
+    }
+
+    .selection-mode-button:hover {
+        background: #0056b3;
+    }
+
+    .selection-mode-button.active {
+        background: #dc3545;
+    }
+
+    /* Hide selection indicators when not in selection mode */
+    :not(.selection-mode) .selection-indicator {
+        display: none;
+    }
+`;
+document.head.appendChild(selectionStyle);
+
+function setupSelectionMode() {
+    const button = document.querySelector('.selection-mode-button');
+    const batchActions = document.querySelector('.batch-actions');
+    const batchTagInput = document.getElementById('batch-tag-input');
+
+    console.log('Selection mode setup:', {
+        buttonFound: !!button,
+        batchActionsFound: !!batchActions,
+        batchTagInputFound: !!batchTagInput
+    });
+
+    // Skip setup if elements aren't found
+    if (!button) {
+        console.error('Selection mode button not found. Selector: .selection-mode-button');
+        // Try to create the button if it doesn't exist
+        createSelectionModeButton();
+        return;
+    }
+
+    // Hide batch actions initially
+    if (batchActions) {
+        batchActions.style.display = 'none';
+    }
+
+    button.addEventListener('click', () => {
+        window.selectionMode = !window.selectionMode;
+
+        // Toggle selection mode class on body
+        document.body.classList.toggle('selection-mode', window.selectionMode);
+
+        // Update button state
+        button.classList.toggle('active');
+        button.textContent = window.selectionMode ? 'Exit Selection' : 'Select Videos';
+
+        // Show/hide batch actions
+        if (batchActions) {
+            batchActions.style.display = window.selectionMode ? 'flex' : 'none';
+        }
+
+        // Show/hide batch tag input
+        if (batchTagInput) {
+            batchTagInput.style.display = window.selectionMode ? 'block' : 'none';
+        }
+
+        // Clear selections when exiting selection mode
+        if (!window.selectionMode) {
+            window.selectedVideos.clear();
+            document.querySelectorAll('.video-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            updateSelectionUI();
+        }
+    });
+}
+
+function createSelectionModeButton() {
+    console.log('Creating selection mode button');
+    const button = document.createElement('button');
+    button.className = 'selection-mode-button';
+    button.textContent = 'Select Videos';
+    button.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: bold;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        z-index: 1000;
+    `;
+
+    document.body.appendChild(button);
+
+    // Re-run setup with the new button
+    setupSelectionMode();
+}
+
+function clearSelections() {
+    window.selectedVideos.clear();
+    document.querySelectorAll('.video-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    updateSelectionUI();
+}
+
+function handleVideoCardClick(event) {
+    // Only handle selection if in selection mode
+    if (!window.selectionMode) {
+        return;
+    }
+
+    // Ignore clicks on specific elements
+    if (event.target.closest('.delete-button') ||
+        event.target.closest('.delete-confirmation') ||
+        event.target.closest('.video-tag')) {
+        return;
+    }
+
+    const card = event.currentTarget;
+    const videoId = card.dataset.videoId;
+
+    console.log('Click handled, current selection size:', window.selectedVideos.size); // Debug
+
+    // Handle selection with shift key for range selection
+    if (event.shiftKey && window.lastSelectedVideo) {
+        const cards = Array.from(document.querySelectorAll('.video-card'));
+        const lastIndex = cards.findIndex(c => c.dataset.videoId === window.lastSelectedVideo);
+        const currentIndex = cards.findIndex(c => c.dataset.videoId === videoId);
+
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+
+        for (let i = start; i <= end; i++) {
+            const card = cards[i];
+            card.classList.add('selected');
+            window.selectedVideos.add(card.dataset.videoId);
+        }
+    }
+    // Handle selection with ctrl/cmd key for multiple selection
+    else if (event.ctrlKey || event.metaKey) {
+        card.classList.toggle('selected');
+        if (card.classList.contains('selected')) {
+            window.selectedVideos.add(videoId);
+            window.lastSelectedVideo = videoId;
+        } else {
+            window.selectedVideos.delete(videoId);
+        }
+    }
+    // Normal click for single selection
+    else {
+        // Deselect all other cards
+        document.querySelectorAll('.video-card.selected').forEach(c => {
+            c.classList.remove('selected');
+        });
+        window.selectedVideos.clear();
+
+        // Select this card
+        card.classList.add('selected');
+        window.selectedVideos.add(videoId);
+        window.lastSelectedVideo = videoId;
+    }
+
+    console.log('After selection, size:', window.selectedVideos.size); // Debug
+
+    // Update selection count or trigger other actions
+    updateSelectionUI();
+}
+
+function updateSelectionUI() {
+    const count = window.selectedVideos.size;
+    console.log('Updating UI with count:', count); // Debug
+
+    // Use the correct ID selector
+    const deleteButton = document.getElementById('batch-delete-button');
+    if (deleteButton) {
+        console.log('Found delete button, updating text'); // Debug
+        const countSpan = document.getElementById('selected-count');
+        if (countSpan) {
+            countSpan.textContent = count;
+        }
+        deleteButton.style.display = (window.selectionMode && count > 0) ? 'block' : 'none';
+    } else {
+        console.log('Delete button not found'); // Debug
+    }
+}
+
+// Add styles for the delete selected button
+const deleteSelectedStyle = document.createElement('style');
+deleteSelectedStyle.textContent = `
+    .delete-selected-button {
+        position: fixed;
+        bottom: 20px;
+        right: 200px; /* Position to the left of selection mode button */
+        padding: 12px 24px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: bold;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        z-index: 1000;
+        transition: all 0.2s ease;
+    }
+
+    .delete-selected-button:hover {
+        background: #c82333;
+    }
+`;
+document.head.appendChild(deleteSelectedStyle);
+
+function deleteSelectedVideos() {
+    if (window.selectedVideos.size === 0) return;
+
+    if (confirm(`Are you sure you want to delete ${window.selectedVideos.size} videos?`)) {
+        // Convert Set to Array for the fetch request
+        const videoIds = Array.from(window.selectedVideos);
+
+        fetch('/api/videos/bulk-delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ video_ids: videoIds })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove deleted videos from the UI
+                videoIds.forEach(videoId => {
+                    const card = document.querySelector(`.video-card[data-video-id="${videoId}"]`);
+                    if (card) {
+                        card.style.transition = 'opacity 0.3s ease';
+                        card.style.opacity = '0';
+                        setTimeout(() => card.remove(), 300);
+                    }
+                });
+
+                // Clear selections
+                window.selectedVideos.clear();
+                updateSelectionUI();
+            } else {
+                alert('Error deleting videos: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting videos. Please try again.');
+        });
+    }
+}
+
+function confirmBatchDelete() {
+    const selectedCount = window.selectedVideos.size;
+    if (selectedCount === 0) {
+        alert('No videos selected');
+        return;
+    }
+
+    if (confirm(`Are you sure you want to delete ${selectedCount} videos?`)) {
+        const videoIds = Array.from(window.selectedVideos);
+
+        // Call the bulk delete endpoint
+        fetch('/api/videos/bulk-delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ video_ids: videoIds })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove all deleted videos from the UI
+                videoIds.forEach(videoId => {
+                    const videoCard = document.querySelector(`.video-card[data-video-id="${videoId}"]`);
+                    if (videoCard) {
+                        videoCard.style.transition = 'opacity 0.3s ease';
+                        videoCard.style.opacity = '0';
+                        setTimeout(() => {
+                            videoCard.remove();
+                        }, 300);
+                    }
+                });
+
+                // Clear selections
+                window.selectedVideos.clear();
+                updateSelectionUI();
+
+                // Show success message
+                alert(data.summary);
+            } else {
+                alert('Error deleting videos: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting videos. Please try again.');
+        });
+    }
+}
+
+function cancelBatchSelection() {
+    // Clear selections
+    window.selectedVideos.clear();
+
+    // Update UI
+    document.querySelectorAll('.video-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+
+    // Update selection count
+    updateSelectionUI();
+
+    // Exit selection mode
+    window.selectionMode = false;
+    document.body.classList.remove('selection-mode');
+
+    // Update selection mode button
+    const button = document.querySelector('.selection-mode-button');
+    if (button) {
+        button.textContent = 'Select Videos';
+        button.classList.remove('active');
+    }
 }
