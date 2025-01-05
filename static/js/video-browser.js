@@ -86,18 +86,18 @@ function resetAndFilterVideos() {
     loadMoreVideos();
 }
 
-function displayVideos(newVideos) {
-    const container = document.getElementById('videos-grid');
+function displayVideos(videos) {
+    console.log('Displaying videos:', videos); // Debug log
 
-    // Only clear container on first page
-    if (window.currentPage === 0) {
-        container.innerHTML = '';
+    if (isMobileView() && window.mobileVideoManager) {
+        window.mobileVideoManager.setVideos(videos);
+    } else {
+        // Existing desktop view code
+        const container = document.getElementById('videos-grid');
+        if (!container) return;
+
+        container.innerHTML = videos.map(video => createVideoCard(video)).join('');
     }
-
-    // Append only the new videos
-    newVideos.forEach(video => {
-        container.appendChild(createVideoCard(video));
-    });
 }
 
 function setupInfiniteScroll() {
@@ -660,11 +660,21 @@ selectionStyle.textContent = `
 `;
 document.head.appendChild(selectionStyle);
 
+function isMobileView() {
+    return window.innerWidth <= 768;
+}
+
 function setupSelectionMode() {
     const button = document.querySelector('.selection-mode-button');
     const batchActions = document.querySelector('.batch-actions');
     const batchTagInput = document.getElementById('batch-tag-input');
     const deleteButton = document.getElementById('batch-delete-button');
+
+    // Hide selection mode button on mobile
+    if (isMobileView()) {
+        if (button) button.style.display = 'none';
+        return;
+    }
 
     // Create and add the apply tag button
     const batchTagContainer = document.querySelector('.batch-tag-input-container');
