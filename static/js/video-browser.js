@@ -664,17 +664,18 @@ function setupSelectionMode() {
     const button = document.querySelector('.selection-mode-button');
     const batchActions = document.querySelector('.batch-actions');
     const batchTagInput = document.getElementById('batch-tag-input');
+    const deleteButton = document.getElementById('batch-delete-button');
 
     console.log('Selection mode setup:', {
         buttonFound: !!button,
         batchActionsFound: !!batchActions,
-        batchTagInputFound: !!batchTagInput
+        batchTagInputFound: !!batchTagInput,
+        deleteButtonFound: !!deleteButton
     });
 
     // Skip setup if elements aren't found
     if (!button) {
         console.error('Selection mode button not found. Selector: .selection-mode-button');
-        // Try to create the button if it doesn't exist
         createSelectionModeButton();
         return;
     }
@@ -702,6 +703,11 @@ function setupSelectionMode() {
         // Show/hide batch tag input
         if (batchTagInput) {
             batchTagInput.style.display = window.selectionMode ? 'block' : 'none';
+        }
+
+        // Show/hide delete button
+        if (deleteButton) {
+            deleteButton.style.display = window.selectionMode ? 'block' : 'none';
         }
 
         // Clear selections when exiting selection mode
@@ -814,19 +820,24 @@ function handleVideoCardClick(event) {
 
 function updateSelectionUI() {
     const count = window.selectedVideos.size;
-    console.log('Updating UI with count:', count); // Debug
+    console.log('Updating UI with count:', count);
 
-    // Use the correct ID selector
+    // Update the count display
+    const countSpan = document.getElementById('selected-count');
+    if (countSpan) {
+        countSpan.textContent = count;
+    }
+
+    // Show/hide batch actions based on selection
+    const batchActions = document.querySelector('.batch-actions');
+    if (batchActions) {
+        batchActions.style.display = (window.selectionMode && count > 0) ? 'flex' : 'none';
+    }
+
+    // Update delete button visibility
     const deleteButton = document.getElementById('batch-delete-button');
     if (deleteButton) {
-        console.log('Found delete button, updating text'); // Debug
-        const countSpan = document.getElementById('selected-count');
-        if (countSpan) {
-            countSpan.textContent = count;
-        }
         deleteButton.style.display = (window.selectionMode && count > 0) ? 'block' : 'none';
-    } else {
-        console.log('Delete button not found'); // Debug
     }
 }
 
@@ -968,4 +979,29 @@ function cancelBatchSelection() {
         button.textContent = 'Select Videos';
         button.classList.remove('active');
     }
+
+    // Hide batch actions but don't remove them
+    const batchActions = document.querySelector('.batch-actions');
+    if (batchActions) {
+        batchActions.style.display = 'none';
+    }
+}
+
+function selectVisibleVideos() {
+    // Get all visible video cards
+    const visibleCards = document.querySelectorAll('.video-card');
+
+    console.log('Selecting visible videos:', visibleCards.length);
+
+    // Add each visible video to the selection
+    visibleCards.forEach(card => {
+        const videoId = card.dataset.videoId;
+        if (videoId) {
+            window.selectedVideos.add(videoId);
+            card.classList.add('selected');
+        }
+    });
+
+    // Update the selection UI
+    updateSelectionUI();
 }
