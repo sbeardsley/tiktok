@@ -642,5 +642,72 @@ def batch_delete_videos():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/videos/bulk-tag", methods=["POST"])
+def add_tag_to_videos():
+    try:
+        data = request.get_json()
+        video_ids = data.get("video_ids", [])
+        new_tag = data.get("tag", "")
+
+        if not video_ids or not new_tag:
+            return jsonify({"success": False, "error": "Missing video_ids or tag"}), 400
+
+        success_count = 0
+        results = []
+
+        for video_id in video_ids:
+            try:
+                # Find the metadata key for this video_id
+                matching_keys = redis_client.keys(f"metadata:*:{video_id}")
+                if not matching_keys:
+                    results.append(
+                        {
+                            "video_id": video_id,
+                            "success": False,
+                            "error": "Video not found",
+                        }
+                    )
+                    continue
+
+                metadata_key = matching_keys[0]
+
+                # Get current tags
+                current_tags_str = redis_client.hget(metadata_key, "tags") or "[]"
+                try:
+                    current_tags = set(json.loads(current_tags_str))
+                except json.JSONDecodeError:
+                    current_tags = set()
+
+                # Add new tag
+                current_tags.add(new_tag)
+
+                # Update tags in Redis
+                redis_client.hset(metadata_key, "tags", json.dumps(list(current_tags)))
+
+                # Add to global tags set
+                redis_client.sadd("all_tags", new_tag)
+
+                success_count += 1
+                results.append({"video_id": video_id, "success": True})
+
+            except Exception as e:
+                logger.error(f"Error adding tag to video {video_id}: {e}")
+                results.append(
+                    {"video_id": video_id, "success": False, "error": str(e)}
+                )
+
+        return jsonify(
+            {
+                "success": True,
+                "results": results,
+                "summary": f"Successfully added tag to {success_count} out of {len(video_ids)} videos",
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in bulk tag: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

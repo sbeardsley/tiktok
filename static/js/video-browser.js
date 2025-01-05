@@ -666,6 +666,18 @@ function setupSelectionMode() {
     const batchTagInput = document.getElementById('batch-tag-input');
     const deleteButton = document.getElementById('batch-delete-button');
 
+    // Create and add the apply tag button
+    const batchTagContainer = document.querySelector('.batch-tag-input-container');
+    if (batchTagContainer && !document.getElementById('apply-batch-tag-button')) {
+        const applyTagButton = document.createElement('button');
+        applyTagButton.id = 'apply-batch-tag-button';
+        applyTagButton.textContent = 'Add Tag';
+        applyTagButton.className = 'btn btn-primary';
+        applyTagButton.style.marginLeft = '10px';
+        applyTagButton.onclick = applyBatchTag;
+        batchTagContainer.appendChild(applyTagButton);
+    }
+
     console.log('Selection mode setup:', {
         buttonFound: !!button,
         batchActionsFound: !!batchActions,
@@ -1004,4 +1016,64 @@ function selectVisibleVideos() {
 
     // Update the selection UI
     updateSelectionUI();
+}
+
+function applyBatchTag() {
+    const tagInput = document.getElementById('batch-tag-input');
+    if (!tagInput || !tagInput.value.trim()) {
+        alert('Please enter a tag');
+        return;
+    }
+
+    const tag = tagInput.value.trim();
+    const videoIds = Array.from(window.selectedVideos);
+
+    if (videoIds.length === 0) {
+        alert('No videos selected');
+        return;
+    }
+
+    // Call the API to add tags
+    fetch('/api/videos/bulk-tag', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            video_ids: videoIds,
+            tag: tag
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Clear the input
+            tagInput.value = '';
+
+            // Show success message
+            alert(`Tag "${tag}" added to ${videoIds.length} videos`);
+
+            // Optionally refresh the video cards to show new tags
+            videoIds.forEach(videoId => {
+                const card = document.querySelector(`.video-card[data-video-id="${videoId}"]`);
+                if (card) {
+                    // Add the new tag to the video's tag container
+                    const tagsContainer = card.querySelector('.video-tags');
+                    if (tagsContainer) {
+                        const tagSpan = document.createElement('span');
+                        tagSpan.className = 'video-tag';
+                        tagSpan.textContent = tag;
+                        tagSpan.onclick = () => addFilter(tag);
+                        tagsContainer.appendChild(tagSpan);
+                    }
+                }
+            });
+        } else {
+            alert('Error adding tags: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error adding tags. Please try again.');
+    });
 }
