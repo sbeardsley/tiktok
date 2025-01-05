@@ -4,27 +4,23 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for OpenCV
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-driver \
     libgl1-mesa-glx \
     libglib2.0-0 \
-    && apt-get clean \
+    wget \
+    gnupg2 \
+    apt-transport-https \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first to leverage Docker cache
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy service code
-COPY services/video_downloader.py .
+# Copy application code
+COPY . .
 
-# Create downloads directory
-RUN mkdir -p downloads
-
-# Environment variables
-ENV PYTHONUNBUFFERED=1
-ENV REDIS_HOST=redis
-ENV REDIS_PORT=6379
-
-# Run the service
-CMD ["python", "video_downloader.py"]
+# Default command (will be overridden by docker-compose)
+CMD ["python", "services/video_downloader.py"]

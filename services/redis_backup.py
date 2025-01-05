@@ -37,6 +37,29 @@ class RedisBackupManager:
                 "all_videos": list(self.redis_client.smembers("all_videos")),
                 "deleted_videos": list(self.redis_client.smembers("deleted_videos")),
                 "all_tags": list(self.redis_client.smembers("all_tags")),
+                "usernames": list(self.redis_client.smembers("usernames")),
+            },
+            "queues": {
+                "tiktok_video_queue": list(
+                    self.redis_client.lrange("tiktok_video_queue", 0, -1)
+                ),
+                "video_download_queue": list(
+                    self.redis_client.lrange("video_download_queue", 0, -1)
+                ),
+                "metadata_failed_queue": list(
+                    self.redis_client.lrange("metadata_failed_queue", 0, -1)
+                ),
+                "download_failed_queue": list(
+                    self.redis_client.lrange("download_failed_queue", 0, -1)
+                ),
+            },
+            "processing": {
+                "metadata_processing": list(
+                    self.redis_client.smembers("metadata_processing")
+                ),
+                "download_processing": list(
+                    self.redis_client.smembers("download_processing")
+                ),
             },
             "user_videos": {},
             "tag_videos": {},
@@ -74,10 +97,23 @@ class RedisBackupManager:
         logger.info(f"Backup completed: {backup_file}")
         return backup_file
 
-    def restore_backup(self, backup_file: str or Path, clear_existing=False):
-        """Restore Redis data from a backup file."""
-        backup_file = Path(backup_file)
+    def restore_backup(
+        self,
+        backup_file: str or Path,
+        clear_existing=False,
+        restore_failed=False,
+        restore_processing=False,
+    ):
+        """
+        Restore Redis data from a backup file.
 
+        Args:
+            backup_file: Path to backup file
+            clear_existing: Whether to clear existing Redis data
+            restore_failed: Whether to restore failed queues
+            restore_processing: Whether to restore processing sets
+        """
+        backup_file = Path(backup_file)
         if not backup_file.exists():
             raise FileNotFoundError(f"Backup file not found: {backup_file}")
 
@@ -104,25 +140,55 @@ class RedisBackupManager:
             for key, data in tqdm(
                 backup_data["metadata"].items(), desc="Restoring metadata"
             ):
-                self.redis_client.hset(key, mapping=data)
+                if data:  # Only restore if there's data
+                    self.redis_client.hset(key, mapping=data)
 
             # Restore sets
-            for set_name, members in tqdm(
+            for key, members in tqdm(
                 backup_data["sets"].items(), desc="Restoring sets"
             ):
-                if members:
-                    self.redis_client.sadd(set_name, *members)
+                if members:  # Only restore if there are members
+                    self.redis_client.sadd(key, *members)
 
-            # Restore user video sets
+            # Restore queues
+            if "queues" in backup_data:
+                for queue_name, items in tqdm(
+                    backup_data["queues"].items(), desc="Restoring queues"
+                ):
+                    # Skip failed queues if not requested
+                    if not restore_failed and queue_name.endswith("_failed_queue"):
+                        logger.info(f"Skipping failed queue: {queue_name}")
+                        continue
+
+                    if items:
+                        self.redis_client.rpush(queue_name, *items)
+                        logger.info(
+                            f"Restored queue {queue_name} with {len(items)} items"
+                        )
+
+            # Restore processing sets
+            if restore_processing and "processing" in backup_data:
+                for set_name, items in tqdm(
+                    backup_data["processing"].items(), desc="Restoring processing sets"
+                ):
+                    if items:
+                        self.redis_client.sadd(set_name, *items)
+                        logger.info(
+                            f"Restored processing set {set_name} with {len(items)} items"
+                        )
+            elif "processing" in backup_data:
+                logger.info("Skipping processing sets as requested")
+
+            # Restore user videos
             for key, members in tqdm(
                 backup_data["user_videos"].items(), desc="Restoring user videos"
             ):
                 if members:
                     self.redis_client.sadd(key, *members)
 
-            # Restore tag sets
+            # Restore tag videos
             for key, members in tqdm(
-                backup_data["tag_videos"].items(), desc="Restoring tags"
+                backup_data["tag_videos"].items(), desc="Restoring tag videos"
             ):
                 if members:
                     self.redis_client.sadd(key, *members)
@@ -189,9 +255,18 @@ def main():
                         input("Clear existing data before restore? (y/n): ").lower()
                         == "y"
                     )
+                    restore_failed = (
+                        input("Restore failed queues? (y/n): ").lower() == "y"
+                    )
+                    restore_processing = (
+                        input("Restore processing sets? (y/n): ").lower() == "y"
+                    )
+
                     backup_manager.restore_backup(
                         backup_manager.backup_dir / backups[idx]["file"],
                         clear_existing=clear,
+                        restore_failed=restore_failed,
+                        restore_processing=restore_processing,
                     )
                     print("Restore completed!")
                 else:

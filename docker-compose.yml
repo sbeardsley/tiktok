@@ -9,46 +9,60 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
 
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+      - ./downloads:/app/downloads
+    environment:
+      - REDIS_HOST=redis
+      - WORKERS=4
+      - TIMEOUT=120
+    depends_on:
+      - redis
+
   url_discovery:
     build:
       context: .
       dockerfile: services/discovery.Dockerfile
     volumes:
+      - .:/app
       - ./downloads:/app/downloads
-      - ./usernames.md:/app/usernames.md
-    depends_on:
-      - redis
     environment:
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    restart: unless-stopped
+    command: python services/url_discovery.py
+    depends_on:
+      - redis
 
-  metadata_service:
+  metadata:
     build:
       context: .
       dockerfile: services/metadata.Dockerfile
     volumes:
+      - .:/app
       - ./downloads:/app/downloads
-    depends_on:
-      - redis
     environment:
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    restart: unless-stopped
+    command: python services/metadata_service.py
+    depends_on:
+      - redis
 
-  video_downloader:
+  downloader:
     build:
       context: .
       dockerfile: services/downloader.Dockerfile
     volumes:
+      - .:/app
       - ./downloads:/app/downloads
-    depends_on:
-      - redis
-      - metadata_service
     environment:
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    restart: unless-stopped
+    command: python services/video_downloader.py
+    depends_on:
+      - redis
 
 volumes:
   redis_data:

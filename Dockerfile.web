@@ -6,6 +6,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     chromium \
     chromium-driver \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     wget \
     gnupg2 \
     apt-transport-https \
@@ -13,10 +15,13 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Copy application code
 COPY . .
 
-# Default command (will be overridden by docker-compose)
-CMD ["python", "services/url_discovery.py"]
+# Expose port
+EXPOSE 5000
+
+# Run with Gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app", "--workers", "4", "--timeout", "120"]

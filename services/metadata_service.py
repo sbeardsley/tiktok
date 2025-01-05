@@ -32,6 +32,9 @@ class MetadataService:
             db=0,
             decode_responses=True,
         )
+        self.max_retries = 3
+        self.FAILED_QUEUE = "metadata_failed_queue"
+        self.PROCESSING_SET = "metadata_processing"
 
     def setup_chrome_options(self) -> Options:
         """Set up Chrome options for scraping."""
@@ -44,6 +47,7 @@ class MetadataService:
             "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.binary_location = "/usr/bin/chromium"
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option("useAutomationExtension", False)
         return chrome_options
@@ -83,6 +87,16 @@ class MetadataService:
         )
         metadata["tags"] = sorted(list(set(metadata["tags"])))  # Deduplicate and sort
 
+        # Extract AI-generated title (v2t-title)
+        v2t_title = soup.find("div", {"data-e2e": "v2t-title"})
+        if v2t_title:
+            metadata["v2t_title"] = v2t_title.get_text(strip=True)
+
+        # Extract AI-generated description (v2t-desc)
+        v2t_desc = soup.find("div", {"data-e2e": "v2t-desc"})
+        if v2t_desc:
+            metadata["v2t_desc"] = v2t_desc.get_text(strip=True)
+
         return metadata
 
     def extract_tags_from_description(self, description: str) -> List[str]:
@@ -103,16 +117,35 @@ class MetadataService:
 
         return list(set(tags))
 
+    def parse_date_string(self, date_str: str) -> float:
+        """Extract timestamp from date string like 'The Cheese Knees·2022-12-13'"""
+        try:
+            # Split by '·' and take the last part which should be the date
+            date_part = date_str.split("·")[-1].strip()
+            # Convert to timestamp
+            return time.mktime(time.strptime(date_part, "%Y-%m-%d"))
+        except Exception as e:
+            logger.error(f"Error parsing date '{date_str}', using current time: {e}")
+            # Return current timestamp instead of 0
+            return time.time()
+
     def update_metadata(self, video_data: Dict):
         """Store video metadata in Redis."""
         try:
             username = video_data["username"]
             video_id = video_data["video_id"]
 
+            # Create a copy of video_data to modify
+            redis_data = video_data.copy()
+
+            # Convert lists and dicts to JSON strings
+            for key, value in redis_data.items():
+                if isinstance(value, (list, dict)):
+                    redis_data[key] = json.dumps(value)
+
             # Store video metadata using hash
-            # Key format: metadata:{username}:{video_id}
-            redis_key = f"metadata:{username}:{video_id}"
-            self.redis_client.hset(redis_key, mapping=video_data)
+            redis_key = f"metadata:{video_id}"  # Simplified key format
+            self.redis_client.hset(redis_key, mapping=redis_data)
 
             # Add to user's video list
             user_videos_key = f"user_videos:{username}"
@@ -121,11 +154,18 @@ class MetadataService:
             # Add to global video list
             self.redis_client.sadd("all_videos", video_id)
 
+            # Add to sorted set by date
+            if "date" in video_data:
+                timestamp = self.parse_date_string(video_data["date"])
+                self.redis_client.zadd("videos_by_date", {video_id: timestamp})
+
             # Update tags index
             if "tags" in video_data:
                 for tag in video_data["tags"]:
                     self.redis_client.sadd(f"tag:{tag}", video_id)
                     self.redis_client.sadd("all_tags", tag)
+
+            logger.info(f"Successfully updated metadata for video {video_id}")
 
         except Exception as e:
             logger.error(f"Error updating metadata: {e}")
@@ -133,33 +173,73 @@ class MetadataService:
 
     def process_video(self, video_data: Dict):
         """Process a single video to collect metadata."""
-        chrome_options = self.setup_chrome_options()
-        driver = webdriver.Chrome(options=chrome_options)
+        video_id = video_data.get("video_id", "unknown")
 
         try:
-            url = video_data["url"]
-            driver.get(url)
-            time.sleep(2)  # Wait for page to load
+            # Mark as processing
+            self.redis_client.sadd(self.PROCESSING_SET, video_id)
 
-            # Extract metadata
-            html_content = driver.page_source
-            metadata = self.extract_metadata(html_content)
+            # Original processing code here...
+            chrome_options = self.setup_chrome_options()
+            service = webdriver.ChromeService(executable_path="/usr/bin/chromedriver")
+            driver = webdriver.Chrome(options=chrome_options, service=service)
 
-            # Combine with existing video data
-            video_data.update(metadata)
-            video_data["metadata_collection_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                url = video_data["url"]
+                driver.get(url)
+                time.sleep(2)
 
-            # Update metadata file
-            self.update_metadata(video_data)
+                html_content = driver.page_source
+                metadata = self.extract_metadata(html_content)
+                video_data.update(metadata)
+                video_data["metadata_collection_time"] = time.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
 
-            # Queue for video download
-            redis_client.rpush(DOWNLOAD_QUEUE_KEY, json.dumps(video_data))
-            logger.info(f"Queued video {video_data['video_id']} for download")
+                # Update metadata and queue for download
+                self.update_metadata(video_data)
+                self.redis_client.rpush(DOWNLOAD_QUEUE_KEY, json.dumps(video_data))
+                logger.info(f"Successfully processed video {video_id}")
+
+                # Remove from processing set on success
+                self.redis_client.srem(self.PROCESSING_SET, video_id)
+
+            finally:
+                driver.quit()
 
         except Exception as e:
-            logger.error(f"Error processing video {video_data.get('url')}: {e}")
-        finally:
-            driver.quit()
+            logger.error(f"Error processing video {video_id}: {e}")
+            retry_count = video_data.get("retry_count", 0) + 1
+            video_data["retry_count"] = retry_count
+            video_data["last_error"] = str(e)
+
+            if retry_count < self.max_retries:
+                # Put back in queue for retry
+                logger.info(
+                    f"Requeueing video {video_id} for retry {retry_count}/{self.max_retries}"
+                )
+                self.redis_client.rpush(QUEUE_KEY, json.dumps(video_data))
+            else:
+                # Move to failed queue
+                logger.error(
+                    f"Video {video_id} failed after {self.max_retries} attempts"
+                )
+                self.redis_client.rpush(self.FAILED_QUEUE, json.dumps(video_data))
+
+            # Remove from processing set
+            self.redis_client.srem(self.PROCESSING_SET, video_id)
+
+    def retry_failed_videos(self):
+        """Retry videos from the failed queue."""
+        while True:
+            failed_video = self.redis_client.lpop(self.FAILED_QUEUE)
+            if not failed_video:
+                break
+
+            video_data = json.loads(failed_video)
+            video_data["retry_count"] = 0  # Reset retry count
+            logger.info(f"Retrying failed video {video_data.get('video_id')}")
+            self.redis_client.rpush(QUEUE_KEY, json.dumps(video_data))
 
     def run(self):
         """Main service loop."""
@@ -180,6 +260,25 @@ class MetadataService:
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
                 time.sleep(5)
+
+    def get_metadata(self, username: str, video_id: str) -> Dict:
+        """Retrieve video metadata from Redis."""
+        try:
+            redis_key = f"metadata:{username}:{video_id}"
+            data = self.redis_client.hgetall(redis_key)
+
+            # Convert JSON strings back to Python objects
+            for key, value in data.items():
+                try:
+                    data[key] = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    # If not JSON, keep original value
+                    pass
+
+            return data
+        except Exception as e:
+            logger.error(f"Error retrieving metadata: {e}")
+            return {}
 
 
 if __name__ == "__main__":

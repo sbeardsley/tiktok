@@ -1,0 +1,45 @@
+<div class="card mb-4">
+    <div class="card-body">
+        <h5>Services</h5>
+        <ul class="list-group">
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                URL Discovery
+                <span class="badge {% if data.services.url_discovery %}bg-success{% else %}bg-danger{% endif %}">
+                    {{ "Running" if data.services.url_discovery else "Stopped" }}
+                </span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Metadata Processing
+                <span class="badge bg-primary">{{ data.services.metadata }} active</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Download Processing
+                <span class="badge bg-primary">{{ data.services.downloader }} active</span>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5>Queues</h5>
+        <ul class="list-group">
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Videos to Process
+                <span class="badge bg-primary">{{ data.queues.videos_to_process }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Videos to Download
+                <span class="badge bg-primary">{{ data.queues.videos_to_download }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Failed Metadata
+                <span class="badge bg-danger">{{ data.queues.failed_metadata }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Failed Downloads
+                <span class="badge bg-danger">{{ data.queues.failed_downloads }}</span>
+            </li>
+        </ul>
+    </div>
+</div>

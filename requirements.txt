@@ -1,9 +1,21 @@
-redis==5.0.1
-schedule==1.2.0
-beautifulsoup4==4.12.2
-requests==2.31.0
-selenium==4.15.2
-yt-dlp==2023.11.16
-opencv-python==4.8.1.78
-Pillow==10.1.0
-tqdm==4.66.1
+# Web dependencies
+flask
+flask-cors
+gunicorn
+
+# Scraping dependencies
+selenium
+beautifulsoup4
+yt-dlp
+
+# Image/Video processing
+opencv-python-headless
+Pillow
+
+# Data handling
+redis
+schedule
+tqdm
+
+# Development tools
+python-dotenv

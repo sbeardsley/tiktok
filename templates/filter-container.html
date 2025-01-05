@@ -1,0 +1,132 @@
+<div class="filter-container mb-4">
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Filters</h5>
+            <form id="filter-form" class="row g-3">
+                <!-- Combined Search with Tags -->
+                <div class="col-12">
+                    <label for="tag-search" class="form-label">Search Tags and Usernames</label>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="tag-search" placeholder="Search tags or usernames...">
+                        <button class="btn btn-outline-secondary" type="button" id="add-tag">Add</button>
+                    </div>
+                    <div id="selected-tags" class="d-flex flex-wrap gap-2 mt-2">
+                        <!-- Selected tags and usernames will be added here -->
+                    </div>
+                </div>
+
+                <!-- Hidden input to store selected values -->
+                <input type="hidden" id="selected-tags-input" name="tags">
+
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Apply Filters</button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.filter-tag {
+    display: inline-flex;
+    align-items: center;
+    background: #e9ecef;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    margin: 0.25rem;
+}
+
+.filter-tag.username-tag {
+    background: #007bff;
+    color: white;
+}
+
+.filter-tag .remove-tag {
+    margin-left: 0.5rem;
+    cursor: pointer;
+    color: #dc3545;
+}
+
+.filter-tag.username-tag .remove-tag {
+    color: white;
+}
+
+.filter-tag:hover {
+    background: #dee2e6;
+}
+
+.filter-tag.username-tag:hover {
+    background: #0056b3;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tagSearch = document.getElementById('tag-search');
+    const selectedTags = document.getElementById('selected-tags');
+    const tagsInput = document.getElementById('selected-tags-input');
+
+    function isUsername(text) {
+        return text.startsWith('@');
+    }
+
+    function createTag(text) {
+        const tag = document.createElement('span');
+        const isUsernameTag = isUsername(text);
+        tag.className = `filter-tag ${isUsernameTag ? 'username-tag' : ''}`;
+        tag.innerHTML = `
+            ${text}
+            <span class="remove-tag" data-value="${text}">&times;</span>
+        `;
+        return tag;
+    }
+
+    function updateHiddenInput() {
+        const tags = Array.from(selectedTags.children).map(tag =>
+            tag.textContent.trim().slice(0, -1)
+        );
+        tagsInput.value = JSON.stringify(tags);
+    }
+
+    document.getElementById('add-tag').addEventListener('click', () => {
+        let tag = tagSearch.value.trim();
+
+        // Add @ prefix if it looks like a username but doesn't have @
+        if (/^[A-Za-z0-9_]+$/.test(tag) && !tag.startsWith('@')) {
+            // Check if it matches a known username
+            if (window.appData.filters.usernames.includes(tag)) {
+                tag = '@' + tag;
+            }
+        }
+
+        if (tag && !Array.from(selectedTags.children).some(existing =>
+            existing.textContent.trim().slice(0, -1) === tag
+        )) {
+            selectedTags.appendChild(createTag(tag));
+            tagSearch.value = '';
+            updateHiddenInput();
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-tag')) {
+            e.target.parentElement.remove();
+            updateHiddenInput();
+        }
+    });
+
+    document.getElementById('filter-form').addEventListener('reset', () => {
+        selectedTags.innerHTML = '';
+        updateHiddenInput();
+    });
+
+    // Handle enter key in search field
+    tagSearch.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('add-tag').click();
+        }
+    });
+});
+</script>

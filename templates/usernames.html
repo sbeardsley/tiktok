@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Username Management{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/usernames.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="username-container">
+    <h1>Username Management</h1>
+
+    {% include 'components/username-form.html' %}
+
+    <div class="username-list" id="username-list">
+        <!-- Usernames will be inserted here -->
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/username-manager.js') }}"></script>
+{% endblock %}

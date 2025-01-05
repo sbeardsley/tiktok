@@ -1,5 +1,5 @@
 - [ ] collapsable tags in header
-- [ ] add tab for users to scrape
+- [x] add tab for users to scrape
 - [ ] add scrape by searched keyword
 - [x] have scrape jobs that run on a schedule.
 - [x] figure out ways to optimize the scrape

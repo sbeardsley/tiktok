@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        {% include 'filter-container.html' %}
+        {% include 'status-panel.html' %}
+        {% include 'video-grid.html' %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Make the data available to JavaScript
+window.appData = {{ data|tojson|safe }};
+</script>
+{% endblock %}

@@ -1,0 +1,38 @@
+# Directories
+downloads/
+backups/
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+env/
+.git/
+.github/
+
+# Files
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.log
+.env
+.env.*
+*.db
+*.sqlite3
+.DS_Store
+.coverage
+coverage.xml
+.gitignore
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.bak
+
+# Docker specific
+Dockerfile*
+docker-compose*.yml
+.docker/

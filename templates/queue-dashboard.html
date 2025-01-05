@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Queue Dashboard{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/queue-dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h1>Queue Dashboard</h1>
+
+    <div class="dashboard-grid">
+        <!-- Manifest Queue Card -->
+        <div class="queue-card" id="manifest-queue">
+            <h2>Manifest Queue</h2>
+            <div class="queue-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Waiting</span>
+                    <span class="stat-value" id="manifest-waiting">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Processing</span>
+                    <span class="stat-value" id="manifest-processing">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Failed</span>
+                    <span class="stat-value" id="manifest-failed">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Queue Card -->
+        <div class="queue-card" id="download-queue">
+            <h2>Download Queue</h2>
+            <div class="queue-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Waiting</span>
+                    <span class="stat-value" id="download-waiting">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Processing</span>
+                    <span class="stat-value" id="download-processing">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Failed</span>
+                    <span class="stat-value" id="download-failed">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="queue-card wide" id="recent-activity">
+            <h2>Recent Activity</h2>
+            <div class="activity-list" id="activity-list">
+                <!-- Activities will be inserted here -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/queue-dashboard.js') }}"></script>
+{% endblock %}
