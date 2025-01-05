@@ -23,8 +23,12 @@ function initializeApp() {
 
 function setupFilterHandlers() {
     const filterInput = document.getElementById('filter-input');
+    const filterContainer = filterInput.parentElement;
     const orToggle = document.getElementById('or-filter-toggle');
     const notToggle = document.getElementById('not-filter-toggle');
+
+    // Ensure the container has relative positioning
+    filterContainer.style.position = 'relative';
 
     filterInput.addEventListener('input', handleFilterInput);
     filterInput.addEventListener('keydown', handleFilterKeydown);
@@ -169,7 +173,7 @@ function handleFilterInput(event) {
             .then(data => {
                 if (data.tags && data.tags.length > 0) {
                     suggestions.innerHTML = data.tags
-                        .map(tag => `<div class="tag-suggestion" onclick="addFilter('${tag}')">${tag}</div>`)
+                        .map(tag => `<div class="tag-suggestion" onclick="addFilterAndHideSuggestions('${tag}')">${tag}</div>`)
                         .join('');
                 } else {
                     suggestions.innerHTML = '<div class="no-results">No matching tags found</div>';
@@ -180,15 +184,23 @@ function handleFilterInput(event) {
                 console.error('Error searching tags:', error);
                 suggestions.innerHTML = '<div class="error">Error loading tags</div>';
             });
-    }, 300); // Wait 300ms after typing stops before searching
+    }, 300);
 }
 
 function handleFilterKeydown(event) {
+    const filterInput = document.getElementById('filter-input');
+    const suggestions = document.getElementById('tag-suggestions');
+
     if (event.key === 'Enter') {
-        const suggestions = document.getElementById('tag-suggestions');
-        const firstSuggestion = suggestions.querySelector('.tag-suggestion');
-        if (firstSuggestion) {
-            addFilter(firstSuggestion.textContent);
+        event.preventDefault();
+
+        // If there's input, add it as a filter
+        if (filterInput.value.trim()) {
+            addFilter(filterInput.value.trim());
+            filterInput.value = '';
+
+            // Hide suggestions
+            suggestions.style.display = 'none';
         }
     }
 }
@@ -333,5 +345,45 @@ style.textContent = `
         text-align: center;
         color: #f44336;
     }
+    .filter-input-container {
+        position: relative;
+        display: inline-block;
+    }
+    #filter-input {
+        width: 100%;
+    }
+    #tag-suggestions {
+        position: absolute;
+        top: calc(100% / 4);  /* Position right below input with small gap */
+        left: 0;
+        width: 100%;
+        max-height: 300px;
+        overflow-y: auto;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        z-index: 1001;
+    }
+    .tag-suggestion {
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+    .tag-suggestion:hover {
+        background-color: #f5f5f5;
+    }
 `;
 document.head.appendChild(style);
+
+function addFilterAndHideSuggestions(filter) {
+    // Add the filter
+    addFilter(filter);
+
+    // Clear the input
+    const filterInput = document.getElementById('filter-input');
+    filterInput.value = '';
+
+    // Hide suggestions
+    const suggestions = document.getElementById('tag-suggestions');
+    suggestions.style.display = 'none';
+}

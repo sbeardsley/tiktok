@@ -105,11 +105,14 @@ class VideoDownloader:
         self, username: str, video_id: str, video_path: str, thumbnail_path: str
     ):
         """Update video and thumbnail paths in Redis."""
-        redis_key = f"metadata:{video_id}"
+        redis_key = f"metadata:{username}:{video_id}"
         self.redis_client.hset(redis_key, "video_path", video_path)
         self.redis_client.hset(redis_key, "thumbnail_path", thumbnail_path)
         download_time = time.strftime("%Y-%m-%d %H:%M:%S")
         self.redis_client.hset(redis_key, "download_time", download_time)
+
+        # Add username to all_usernames set
+        self.redis_client.sadd("all_usernames", username)
 
         # Update the sorted set with download time if no valid date exists
         video_data = self.redis_client.hgetall(redis_key)

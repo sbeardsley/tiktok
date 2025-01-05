@@ -144,12 +144,15 @@ class MetadataService:
                     redis_data[key] = json.dumps(value)
 
             # Store video metadata using hash
-            redis_key = f"metadata:{video_id}"  # Simplified key format
+            redis_key = f"metadata:{username}:{video_id}"
             self.redis_client.hset(redis_key, mapping=redis_data)
 
             # Add to user's video list
             user_videos_key = f"user_videos:{username}"
             self.redis_client.sadd(user_videos_key, video_id)
+
+            # Add username to all_usernames set
+            self.redis_client.sadd("all_usernames", username)
 
             # Add to global video list
             self.redis_client.sadd("all_videos", video_id)

@@ -431,17 +431,45 @@ def get_videos():
 def search_tags():
     try:
         query = request.args.get("q", "").lower()
-        if not query:
-            return jsonify({"tags": []})
+        logger.info(f"Tag search query: {query}")
 
-        # Get all tags and filter on the server side
+        # Get all tags and usernames
         all_tags = list(redis_client.smembers("all_tags"))
-        matching_tags = [tag for tag in all_tags if query in tag.lower()]
+        all_usernames = list(redis_client.smembers("all_usernames"))
 
-        # Limit results to prevent overwhelming the frontend
-        return jsonify({"tags": matching_tags[:50]})  # Return top 50 matching tags
+        logger.info(f"Found {len(all_usernames)} usernames: {all_usernames}")
+        logger.info(
+            f"Found {len(all_tags)} tags: {all_tags[:5]}..."
+        )  # Just show first 5 tags
+
+        # Handle username search (with or without @ symbol)
+        clean_query = query.lstrip("@")  # Remove @ if present
+        logger.info(f"Clean query: {clean_query}")
+
+        # Filter and format usernames (add @ symbol)
+        matching_usernames = []
+        if (
+            query.startswith("@") or not query
+        ):  # Show usernames if searching with @ or empty query
+            matching_usernames = [
+                f"@{username}"
+                for username in all_usernames
+                if clean_query in username.lower()
+            ]
+        logger.info(f"Matching usernames: {matching_usernames}")
+
+        # Filter tags (only if query doesn't start with @)
+        matching_tags = []
+        if not query.startswith("@"):
+            matching_tags = [tag for tag in all_tags if query in tag.lower()]
+        logger.info(f"Matching tags: {len(matching_tags)} tags")
+
+        # Combine and sort results (usernames first, then tags)
+        results = sorted(matching_usernames) + sorted(matching_tags)
+
+        return jsonify({"tags": results[:50]})  # Return top 50 matching items
     except Exception as e:
-        print(f"Error in tag search: {e}")
+        logger.error(f"Error in tag search: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -475,6 +503,88 @@ def parse_date_string(date_str: str) -> float:
     except Exception as e:
         logger.error(f"Error parsing date string '{date_str}': {e}")
         return time.time()  # Return current time as fallback
+
+
+def store_video_metadata(video_data):
+    """Store video metadata in Redis."""
+    try:
+        username = video_data.get("username")
+        video_id = video_data.get("video_id")
+
+        if username and video_id:
+            # Store the metadata
+            redis_key = f"metadata:{username}:{video_id}"
+            redis_client.hmset(redis_key, video_data)
+
+            # Add to videos_by_date sorted set
+            if video_data.get("date"):
+                timestamp = parse_date_string(video_data["date"])
+                redis_client.zadd("videos_by_date", {video_id: timestamp})
+
+            # Store username in all_usernames set
+            redis_client.sadd("all_usernames", username)
+
+            # Store tags in all_tags set
+            if video_data.get("tags"):
+                tags = json.loads(video_data["tags"])
+                if tags:
+                    redis_client.sadd("all_tags", *tags)
+
+            return True
+    except Exception as e:
+        logger.error(f"Error storing video metadata: {e}")
+        return False
+
+
+@app.route("/api/metadata/<video_id>", methods=["PUT"])
+def update_metadata(video_id):
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        # Find the metadata key for this video_id
+        matching_keys = redis_client.keys(f"metadata:*:{video_id}")
+        if not matching_keys:
+            return jsonify({"error": "Video not found"}), 404
+
+        metadata_key = matching_keys[0]
+
+        # Update metadata
+        redis_client.hmset(metadata_key, data)
+
+        # Add username to all_usernames set if present
+        if "username" in data:
+            redis_client.sadd("all_usernames", data["username"])
+
+        # Update tags in all_tags set if present
+        if "tags" in data:
+            tags = json.loads(data["tags"])
+            if tags:
+                redis_client.sadd("all_tags", *tags)
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error updating metadata: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/videos", methods=["POST"])
+def add_video():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        # Store metadata
+        if store_video_metadata(data):
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Failed to store metadata"}), 500
+
+    except Exception as e:
+        logger.error(f"Error adding video: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
