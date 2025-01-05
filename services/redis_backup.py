@@ -37,7 +37,16 @@ class RedisBackupManager:
                 "all_videos": list(self.redis_client.smembers("all_videos")),
                 "deleted_videos": list(self.redis_client.smembers("deleted_videos")),
                 "all_tags": list(self.redis_client.smembers("all_tags")),
-                "usernames": list(self.redis_client.smembers("usernames")),
+                "all_usernames": list(self.redis_client.smembers("all_usernames")),
+            },
+            "sorted_sets": {
+                "videos_by_date": [
+                    {"member": member, "score": score}
+                    for member, score in self.redis_client.zrange(
+                        "videos_by_date", 0, -1, withscores=True
+                    )
+                ],
+                # Add any other sorted sets here with the same pattern
             },
             "queues": {
                 "tiktok_video_queue": list(
@@ -149,6 +158,23 @@ class RedisBackupManager:
             ):
                 if members:  # Only restore if there are members
                     self.redis_client.sadd(key, *members)
+
+            # Restore sorted sets
+            if "sorted_sets" in backup_data:
+                for set_name, items in tqdm(
+                    backup_data["sorted_sets"].items(), desc="Restoring sorted sets"
+                ):
+                    if items:
+                        # Delete existing sorted set
+                        self.redis_client.delete(set_name)
+                        # Add all members with their scores
+                        for item in items:
+                            self.redis_client.zadd(
+                                set_name, {item["member"]: item["score"]}
+                            )
+                        logger.info(
+                            f"Restored sorted set {set_name} with {len(items)} items"
+                        )
 
             # Restore queues
             if "queues" in backup_data:

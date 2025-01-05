@@ -96,7 +96,10 @@ function displayVideos(videos) {
         const container = document.getElementById('videos-grid');
         if (!container) return;
 
-        container.innerHTML = videos.map(video => createVideoCard(video)).join('');
+        // Create and append each video card
+        videos.forEach(video => {
+            container.appendChild(createVideoCard(video));
+        });
     }
 }
 
