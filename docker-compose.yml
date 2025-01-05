@@ -12,9 +12,10 @@ services:
     command: redis-server --appendonly yes
 
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.web
+    image: docker.codelinq.com/tiktok-web:latest
     ports:
       - "5000:5000"
     volumes:
@@ -33,6 +34,7 @@ services:
   #   build:
   #     context: .
   #     dockerfile: services/discovery.Dockerfile
+  #     image: docker.codelinq.com/tiktok-url-discovery:latest
   #   volumes:
   #     - .:/app
   #     - ./downloads:/app/downloads
@@ -48,6 +50,7 @@ services:
   #   build:
   #     context: .
   #     dockerfile: services/metadata.Dockerfile
+  #     image: docker.codelinq.com/tiktok-metadata:latest
   #   volumes:
   #     - .:/app
   #     - ./downloads:/app/downloads
@@ -63,6 +66,7 @@ services:
   #   build:
   #     context: .
   #     dockerfile: services/downloader.Dockerfile
+  #     image: docker.codelinq.com/:latest
   #   volumes:
   #     - .:/app
   #     - ./downloads:/app/downloads
@@ -75,9 +79,10 @@ services:
   #     - redis
 
   redis-backup:
-    build:
-      context: .
-      dockerfile: Dockerfile.backup
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.backup
+    image: docker.codelinq.com/tiktok-redis-backup:latest
     volumes:
       - ./backups:/app/backups
     environment:

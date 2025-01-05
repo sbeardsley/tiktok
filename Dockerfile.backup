@@ -8,6 +8,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the backup service
 COPY services/redis_backup.py .
+COPY services/migrate_to_redis.py .
+COPY check_missing.py .
+COPY create_sorted_set.py .
+COPY fix_video_paths.py .
+COPY populate_usernames.py .
 
 # Create backups directory
 RUN mkdir backups
