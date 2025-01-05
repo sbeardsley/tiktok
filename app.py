@@ -709,5 +709,65 @@ def add_tag_to_videos():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/usernames")
+def usernames():
+    """Username management route"""
+    try:
+        # Get all usernames from Redis
+        usernames = list(redis_client.smembers("all_usernames"))
+        usernames.sort()  # Sort alphabetically
+
+        return render_template("usernames.html", usernames=usernames)
+    except Exception as e:
+        logger.error(f"Error in usernames route: {e}")
+        return render_template("usernames.html", usernames=[])
+
+
+@app.route("/api/usernames", methods=["GET"])
+def get_usernames():
+    """Get all usernames"""
+    try:
+        usernames = list(redis_client.smembers("all_usernames"))
+        usernames.sort()
+        return jsonify({"success": True, "usernames": usernames})
+    except Exception as e:
+        logger.error(f"Error getting usernames: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/usernames", methods=["POST"])
+def add_username():
+    """Add a new username"""
+    try:
+        data = request.get_json()
+        username = data.get("username", "").strip()
+
+        if not username:
+            return jsonify({"success": False, "error": "Username is required"}), 400
+
+        redis_client.sadd("all_usernames", username)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error adding username: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/usernames", methods=["DELETE"])
+def delete_username():
+    """Delete a username"""
+    try:
+        data = request.get_json()
+        username = data.get("username", "").strip()
+
+        if not username:
+            return jsonify({"success": False, "error": "Username is required"}), 400
+
+        redis_client.srem("all_usernames", username)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error deleting username: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

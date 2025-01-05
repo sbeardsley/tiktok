@@ -1,51 +1,57 @@
 .username-container {
-    max-width: 800px;
-    margin: 100px auto 0;
+    max-width: 600px;
+    margin: 0 auto;
     padding: 20px;
-}
-
-.username-form {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-.username-input {
-    flex: 1;
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
-.username-list {
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    overflow: hidden;
 }
 
 .username-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px;
-    border-bottom: 1px solid #eee;
+    padding: 10px;
+    margin: 5px 0;
+    background: #f8f9fa;
+    border-radius: 4px;
 }
 
-.username-item:last-child {
-    border-bottom: none;
+.username {
+    font-size: 16px;
 }
 
-.delete-username {
-    background-color: #dc3545;
+.delete-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    padding: 5px;
+}
+
+.delete-btn:hover {
+    color: #c82333;
+}
+
+#add-username-form {
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+#new-username {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+#add-username-form button {
+    padding: 8px 16px;
+    background: #007bff;
     color: white;
     border: none;
-    padding: 5px 10px;
     border-radius: 4px;
     cursor: pointer;
 }
 
-.delete-username:hover {
-    background-color: #c82333;
+#add-username-form button:hover {
+    background: #0056b3;
 }
