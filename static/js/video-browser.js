@@ -237,6 +237,29 @@ function createVideoCard(video) {
     card.className = 'video-card';
     card.dataset.videoId = video.video_id;
 
+    // Parse author string
+    let displayName = video.username; // Default to username from metadata
+    let relativeTime = video.author.split('·')[1];
+    if (video.author) {
+        // Try to extract the full name from the author string
+        const authorParts = video.author.split('·')[0]; // Get part before the dot
+        if (authorParts) {
+            // Check if authorParts contains the username
+            if (authorParts.includes(video.username)) {
+                // Remove the username portion to get the display name
+                displayName = authorParts.replace(video.username, '').trim();
+            } else {
+                // If no username found, use the whole authorParts
+                displayName = authorParts.trim();
+            }
+
+            // If we ended up with an empty display name, fall back to username
+            if (!displayName) {
+                displayName = video.username;
+            }
+        }
+    }
+
     card.innerHTML = `
         <div class="video-content">
             <div class="video-thumbnail-container">
@@ -252,7 +275,10 @@ function createVideoCard(video) {
                 <button class="delete-button" onclick="showDeleteConfirmation(event)">×</button>
             </div>
             <div class="video-info">
-                <h3 class="author">${video.author || `@${video.username}`}</h3>
+                <div class="author-container">
+                    <h3 class="author">${displayName}</h3>
+                    <span class="time">${relativeTime}</span>
+                </div>
                 ${video.description ?
                     `<div class="video-description">${video.description.slice(0, 100)}...</div>` :
                     ''
@@ -261,10 +287,6 @@ function createVideoCard(video) {
                     ${(video.tags || [])
                         .map(tag => `<span class="video-tag" onclick="addFilter('${tag}')">${tag}</span>`)
                         .join('')
-                    }
-                    ${video.username ?
-                        `<span class="video-tag username-tag" onclick="addFilter('@${video.username}')">@${video.username}</span>` :
-                        ''
                     }
                 </div>
             </div>
