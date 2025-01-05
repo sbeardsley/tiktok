@@ -3,66 +3,26 @@ version: '3.8'
 services:
   redis:
     image: redis:latest
+    networks:
+      - backup-network
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
 
-  web:
+  redis-backup:
     build:
       context: .
-      dockerfile: Dockerfile.web
-    ports:
-      - "5000:5000"
+      dockerfile: Dockerfile.backup
     volumes:
-      - .:/app
-      - ./downloads:/app/downloads
+      - ./backups:/app/backups
     environment:
       - REDIS_HOST=redis
-      - WORKERS=4
-      - TIMEOUT=120
+    networks:
+      - backup-network
     depends_on:
       - redis
+    stdin_open: true
+    tty: true
 
-  url_discovery:
-    build:
-      context: .
-      dockerfile: services/discovery.Dockerfile
-    volumes:
-      - .:/app
-      - ./downloads:/app/downloads
-    environment:
-      - REDIS_HOST=redis
-    command: python services/url_discovery.py
-    depends_on:
-      - redis
-
-  metadata:
-    build:
-      context: .
-      dockerfile: services/metadata.Dockerfile
-    volumes:
-      - .:/app
-      - ./downloads:/app/downloads
-    environment:
-      - REDIS_HOST=redis
-    command: python services/metadata_service.py
-    depends_on:
-      - redis
-
-  downloader:
-    build:
-      context: .
-      dockerfile: services/downloader.Dockerfile
-    volumes:
-      - .:/app
-      - ./downloads:/app/downloads
-    environment:
-      - REDIS_HOST=redis
-    command: python services/video_downloader.py
-    depends_on:
-      - redis
-
-volumes:
-  redis_data:
+networks:
+  backup-network:
+    driver: bridge

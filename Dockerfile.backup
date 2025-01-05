@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install required packages
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the backup service
+COPY services/redis_backup.py .
+
+# Create backups directory
+RUN mkdir backups
+
+# Set environment variables
+ENV REDIS_HOST=redis
+ENV PYTHONUNBUFFERED=1
+
+# Run the backup script
+CMD ["python", "redis_backup.py"]
