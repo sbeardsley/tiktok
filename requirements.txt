@@ -16,6 +16,7 @@ Pillow
 redis
 schedule
 tqdm
+python-dateutil
 
 # Development tools
 python-dotenv

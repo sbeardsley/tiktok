@@ -51,50 +51,18 @@ function resetAndFilterVideos() {
     loadMoreVideos();
 }
 
-function filterVideos(videos) {
-    // If no filters selected, return all videos
-    if (!window.selectedFilters || window.selectedFilters.size === 0) {
-        //console.log('No filters active, returning all videos:', videos.length);
-        return videos;
-    }
-
-    return videos.filter(video => {
-        const videoTags = new Set([...(video.tags || []), `@${video.username}`]);
-        const selectedFiltersArray = Array.from(window.selectedFilters);
-
-        if (window.useNotFilter) {
-            // NOT filter: video must not have any of the selected filters
-            return !selectedFiltersArray.some(filter => videoTags.has(filter));
-        }
-
-        if (window.useOrFilter) {
-            // OR filter: video must have at least one of the selected filters
-            return selectedFiltersArray.some(filter => videoTags.has(filter));
-        }
-
-        // AND filter: video must have all selected filters
-        return selectedFiltersArray.every(filter => videoTags.has(filter));
-    });
-}
-
-function displayVideos() {
+function displayVideos(newVideos) {
     const container = document.getElementById('videos-grid');
-    const start = window.currentPage * window.videosPerPage;
-    const end = Math.min(start + window.videosPerPage, window.filteredVideos.length);
-    const videosToShow = window.filteredVideos.slice(start, end);
 
-    // console.log('Displaying videos from', start, 'to', end);
-    // console.log('Number of videos to show:', videosToShow.length);
-
+    // Only clear container on first page
     if (window.currentPage === 0) {
         container.innerHTML = '';
     }
 
-    videosToShow.forEach(video => {
+    // Append only the new videos
+    newVideos.forEach(video => {
         container.appendChild(createVideoCard(video));
     });
-
-    window.isLoading = false;
 }
 
 function setupInfiniteScroll() {
@@ -122,25 +90,42 @@ function loadMoreVideos() {
     }
 
     const nextPage = window.currentPage + 1;
-
-    // console.log('Loading more videos...');
-    // console.log('Current page:', window.currentPage);
-    // console.log('Next page:', nextPage);
-
     window.isLoading = true;
 
-    // Fetch the next page of videos
-    fetch(`/api/videos?page=${nextPage}&per_page=${window.videosPerPage}`)
+    // Build query parameters including filters
+    const params = new URLSearchParams({
+        page: nextPage,
+        per_page: window.videosPerPage
+    });
+
+    // Add filters and filter type if any are selected
+    if (window.selectedFilters && window.selectedFilters.size > 0) {
+        Array.from(window.selectedFilters).forEach(filter => {
+            params.append('filters[]', filter);
+        });
+
+        // Add filter type (and/or/not)
+        if (window.useNotFilter) {
+            params.append('filter_type', 'not');
+        } else if (window.useOrFilter) {
+            params.append('filter_type', 'or');
+        } else {
+            params.append('filter_type', 'and');
+        }
+    }
+
+    // Fetch the next page of videos with filters
+    fetch(`/api/videos?${params.toString()}`)
         .then(response => response.json())
         .then(data => {
             if (data.videos && data.videos.length > 0) {
                 window.currentPage = nextPage;
+                // Append only the new videos
                 window.filteredVideos = window.filteredVideos.concat(data.videos);
-                displayNewVideos(data.videos);
+                // Display only the new page of videos
+                displayVideos(data.videos);
                 window.hasMoreVideos = data.has_more;
-                // console.log(`Loaded ${data.videos.length} videos, total: ${window.filteredVideos.length}`);
             } else {
-                // console.log('No more videos to load');
                 window.hasMoreVideos = false;
             }
         })
@@ -287,6 +272,10 @@ function createVideoCard(video) {
                     ${(video.tags || [])
                         .map(tag => `<span class="video-tag" onclick="addFilter('${tag}')">${tag}</span>`)
                         .join('')
+                    }
+                    ${video.username ?
+                        `<span class="video-tag username-tag" onclick="addFilter('@${video.username}')">@${video.username}</span>` :
+                        ''
                     }
                 </div>
             </div>

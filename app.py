@@ -9,6 +9,17 @@ from pathlib import Path
 from threading import Lock
 import cv2
 from PIL import Image
+import time
+from dateutil import parser
+import logging
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
@@ -236,72 +247,178 @@ def get_videos():
     try:
         page = int(request.args.get("page", 0))
         per_page = int(request.args.get("per_page", 20))
-        sort_order = request.args.get("order", "desc")  # Default newest first
+        sort_order = request.args.get("order", "desc")
+        filters = request.args.getlist("filters[]")
+        filter_type = request.args.get("filter_type", "and")
 
-        # Get video IDs from sorted set based on sort order
-        start_idx = page * per_page
-        end_idx = start_idx + per_page - 1  # Redis ranges are inclusive
+        logger.info(
+            f"Getting videos - page: {page}, filters: {filters}, type: {filter_type}"
+        )
 
-        # Get sorted video IDs
-        if sort_order == "desc":
-            video_ids = redis_client.zrevrange("videos_by_date", start_idx, end_idx)
-        else:
-            video_ids = redis_client.zrange("videos_by_date", start_idx, end_idx)
+        # Fast path for no filters - use sorted set
+        if not filters:
+            start_idx = page * per_page
+            end_idx = start_idx + per_page
 
-        # Get total count
-        total_videos = redis_client.zcard("videos_by_date")
+            # Get total count first
+            total_videos = redis_client.zcard("videos_by_date")
 
-        # Fetch video data for the page
-        videos = []
-        for video_id in video_ids:
-            try:
-                # Find the metadata key for this video_id
-                matching_keys = redis_client.keys(f"metadata:*:{video_id}")
-                if not matching_keys:
+            # Get video IDs for this page
+            if sort_order == "desc":
+                video_ids = redis_client.zrevrange(
+                    "videos_by_date", start_idx, end_idx - 1
+                )
+            else:
+                video_ids = redis_client.zrange(
+                    "videos_by_date", start_idx, end_idx - 1
+                )
+
+            # Fetch video data for the page
+            videos = []
+            for video_id in video_ids:
+                try:
+                    # Find the metadata key for this video_id
+                    matching_keys = redis_client.keys(f"metadata:*:{video_id}")
+                    if not matching_keys:
+                        continue
+
+                    video_key = matching_keys[0]  # Use the first matching key
+                    video_data = redis_client.hgetall(video_key)
+
+                    if (
+                        video_data
+                        and video_data.get("deleted") != "True"
+                        and video_data.get("file_missing") != "True"
+                    ):
+
+                        try:
+                            tags = json.loads(video_data.get("tags", "[]"))
+                        except json.JSONDecodeError:
+                            tags = []
+
+                        username = video_data.get("username", "")
+                        video = {
+                            "video_id": video_data["video_id"],
+                            "video_path": f"{username}_videos/{video_data['video_id']}.mp4",
+                            "thumbnail_path": f"{username}_videos/{video_data['video_id']}_thumb.jpg",
+                            "description": video_data.get("description", ""),
+                            "username": username,
+                            "tags": tags,
+                            "has_thumbnail": True,
+                            "author": video_data.get("author", ""),
+                            "music": video_data.get("music", ""),
+                            "date": (
+                                video_data.get("date", "").split("·")[1]
+                                if "·" in video_data.get("date", "")
+                                else ""
+                            ),
+                            "url": video_data.get("url", ""),
+                        }
+                        videos.append(video)
+                except Exception as e:
+                    logger.error(f"Error processing video {video_id}: {e}")
                     continue
 
-                video_key = matching_keys[0]  # Use the first matching key
-                video_data = redis_client.hgetall(video_key)
+            return jsonify(
+                {
+                    "videos": videos,
+                    "total": total_videos,
+                    "has_more": (end_idx) < total_videos,
+                }
+            )
 
-                if (
-                    video_data
-                    and video_data.get("deleted") != "True"
-                    and video_data.get("file_missing") != "True"
-                ):
+        # Filter logic
+        # Extract username filter if present
+        username_filter = next((f[1:] for f in filters if f.startswith("@")), None)
+        tag_filters = [f for f in filters if not f.startswith("@")]
 
-                    try:
-                        tags = json.loads(video_data.get("tags", "[]"))
-                    except json.JSONDecodeError:
-                        tags = []
+        # Get video keys based on username if present
+        if username_filter:
+            video_keys = redis_client.keys(f"metadata:{username_filter}:*")
+        else:
+            # If no username filter, get all video keys
+            video_keys = redis_client.keys("metadata:*:*")
 
-                    username = video_data.get("username", "")
-                    video = {
-                        "video_id": video_data["video_id"],
-                        "video_path": f"{username}_videos/{video_data['video_id']}.mp4",
-                        "thumbnail_path": f"{username}_videos/{video_data['video_id']}_thumb.jpg",
-                        "description": video_data.get("description", ""),
-                        "username": username,
-                        "tags": tags,
-                        "has_thumbnail": True,
-                        "author": video_data.get("author", ""),
-                        "music": video_data.get("music", ""),
-                        "date": (
-                            video_data.get("date", "").split("·")[1]
-                            if "·" in video_data.get("date", "")
-                            else ""
-                        ),
-                        "url": video_data.get("url", ""),
-                    }
-                    videos.append(video)
-            except Exception as e:
-                logger.error(f"Error processing video {video_id}: {e}")
-                continue
+        # Get all matching videos with their dates
+        video_data_with_dates = []
+        for key in video_keys:
+            video_data = redis_client.hgetall(key)
+            if (
+                video_data
+                and video_data.get("deleted") != "True"
+                and video_data.get("file_missing") != "True"
+            ):
+                try:
+                    # Check if video matches tag filters
+                    video_tags = set(json.loads(video_data.get("tags", "[]")))
+                    tag_filters_set = set(tag_filters)
+
+                    # Apply tag filters based on filter type
+                    if tag_filters:
+                        if filter_type == "and":
+                            if not tag_filters_set.issubset(video_tags):
+                                continue
+                        elif filter_type == "or":
+                            if not tag_filters_set.intersection(video_tags):
+                                continue
+                        elif filter_type == "not":
+                            if tag_filters_set.intersection(video_tags):
+                                continue
+
+                    # If video passes filters, add it to results
+                    if video_data.get("date"):
+                        timestamp = parse_date_string(video_data["date"])
+                    else:
+                        timestamp = time.time()
+                    video_data_with_dates.append((key, timestamp, video_data))
+                except Exception as e:
+                    logger.error(f"Error processing date for {key}: {e}")
+                    continue
+
+        # Sort all videos by date
+        video_data_with_dates.sort(key=lambda x: x[1], reverse=(sort_order == "desc"))
+
+        # Get total count of valid videos
+        total_videos = len(video_data_with_dates)
+
+        # Then paginate the sorted results
+        start_idx = page * per_page
+        end_idx = start_idx + per_page
+        page_data = video_data_with_dates[start_idx:end_idx]
+
+        # Format videos for response
+        videos = []
+        for _, _, video_data in page_data:
+            try:
+                tags = json.loads(video_data.get("tags", "[]"))
+            except json.JSONDecodeError:
+                tags = []
+
+            username = video_data.get("username", "")
+            video = {
+                "video_id": video_data["video_id"],
+                "video_path": f"{username}_videos/{video_data['video_id']}.mp4",
+                "thumbnail_path": f"{username}_videos/{video_data['video_id']}_thumb.jpg",
+                "description": video_data.get("description", ""),
+                "username": username,
+                "tags": tags,
+                "has_thumbnail": True,
+                "author": video_data.get("author", ""),
+                "music": video_data.get("music", ""),
+                "date": (
+                    video_data.get("date", "").split("·")[1]
+                    if "·" in video_data.get("date", "")
+                    else ""
+                ),
+                "url": video_data.get("url", ""),
+            }
+            videos.append(video)
 
         return jsonify(
             {
                 "videos": videos,
                 "total": total_videos,
-                "has_more": (start_idx + per_page) < total_videos,
+                "has_more": end_idx < total_videos,
             }
         )
 
@@ -326,6 +443,38 @@ def search_tags():
     except Exception as e:
         print(f"Error in tag search: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+def parse_date_string(date_str: str) -> float:
+    """Extract timestamp from date string like 'The Cheese Knees·2022-12-13' or 'username·2d ago'"""
+    try:
+        # Split by '·' and take the last part which should be the date/time
+        date_part = date_str.split("·")[-1].strip()
+
+        # Handle relative time formats
+        if "ago" in date_part:
+            # Extract number and unit
+            parts = date_part.split()
+            if len(parts) >= 2:
+                number = int("".join(filter(str.isdigit, parts[0])))
+                unit = parts[0][-1]  # Get last character of first part (d, h, m)
+
+                # Calculate seconds based on unit
+                seconds = {
+                    "d": 86400,  # days to seconds
+                    "h": 3600,  # hours to seconds
+                    "m": 60,  # minutes to seconds
+                }
+
+                if unit in seconds:
+                    return time.time() - (number * seconds[unit])
+
+        # Try parsing as absolute date
+        return parser.parse(date_part).timestamp()
+
+    except Exception as e:
+        logger.error(f"Error parsing date string '{date_str}': {e}")
+        return time.time()  # Return current time as fallback
 
 
 if __name__ == "__main__":
