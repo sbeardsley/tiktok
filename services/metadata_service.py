@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from datetime import datetime
 import time
 import redis
 import logging
@@ -58,34 +59,49 @@ class MetadataService:
         metadata = {}
 
         # Extract the author and date
-        author_info = soup.find("a", class_="css-ej4tw5-StyledLink")
-        if author_info:
-            metadata["author"] = author_info.get_text(strip=True)
+        browser_nickname = soup.find("span", {"data-e2e": "browser-nickname"})
+        if browser_nickname:
+            # Get author from first child with class css-1xccqfx-SpanNickName
+            author_span = browser_nickname.find(
+                "span", class_="css-1xccqfx-SpanNickName"
+            )
+            if author_span:
+                metadata["author"] = author_span.get_text(strip=True)
 
-        date_info = soup.find("span", class_="css-5set0y-SpanOtherInfos")
-        if date_info:
-            date_text = date_info.get_text(strip=True).split(" · ")[-1]
-            metadata["date"] = date_text
+            # Get date from the third span child (no class)
+            date_spans = browser_nickname.find_all("span")
+            if len(date_spans) >= 3:
+                date_span = date_spans[2]  # Third span contains the date
+                metadata["date"] = date_span.get_text(strip=True)
 
-        # Extract video description
-        description = soup.find("h1", class_="css-1fbzdvh-H1Container")
-        if description:
-            metadata["description"] = description.get_text(strip=True)
+        # Extract video description and tags
+        desc_container = soup.find("h1", {"data-e2e": "browse-video-desc"})
+        if desc_container:
+            # Get description from spans with data-e2e="new-desc-span"
+            desc_spans = desc_container.find_all("span", {"data-e2e": "new-desc-span"})
+            description_text = " ".join(
+                span.get_text(strip=True) for span in desc_spans
+            )
+            metadata["description"] = description_text.strip()
+
+            # Get tags from links with data-e2e="search-common-link"
+            tag_links = desc_container.find_all("a", {"data-e2e": "search-common-link"})
+            metadata["tags"] = [
+                tag.get_text(strip=True).lower().strip("#") for tag in tag_links
+            ]
+
+            # Add any additional tags from description
+            metadata["tags"].extend(
+                self.extract_tags_from_description(metadata.get("description", ""))
+            )
+            metadata["tags"] = sorted(
+                list(set(metadata["tags"]))
+            )  # Deduplicate and sort
 
         # Extract music info
-        music_info = soup.find("h4", class_="css-blqru4-H4Link")
+        music_info = soup.find("h4", {"data-e2e": "browse-music"})
         if music_info:
             metadata["music"] = music_info.get_text(strip=True)
-
-        # Extract tags
-        tags = soup.find_all("a", class_="css-ln01ug-StyledTagLink")
-        metadata["tags"] = [tag.get_text(strip=True).lower() for tag in tags]
-
-        # Extract additional metadata
-        metadata["tags"].extend(
-            self.extract_tags_from_description(metadata.get("description", ""))
-        )
-        metadata["tags"] = sorted(list(set(metadata["tags"])))  # Deduplicate and sort
 
         # Extract AI-generated title (v2t-title)
         v2t_title = soup.find("div", {"data-e2e": "v2t-title"})
@@ -120,10 +136,9 @@ class MetadataService:
     def parse_date_string(self, date_str: str) -> float:
         """Extract timestamp from date string like 'The Cheese Knees·2022-12-13'"""
         try:
-            # Split by '·' and take the last part which should be the date
-            date_part = date_str.split("·")[-1].strip()
-            # Convert to timestamp
-            return time.mktime(time.strptime(date_part, "%Y-%m-%d"))
+            if "·" in date_str:
+                date_str = date_str.split("·")[1].strip()
+            return datetime.strptime(date_str, "%Y-%m-%d").timestamp()
         except Exception as e:
             logger.error(f"Error parsing date '{date_str}', using current time: {e}")
             # Return current timestamp instead of 0
@@ -158,9 +173,31 @@ class MetadataService:
             self.redis_client.sadd("all_videos", video_id)
 
             # Add to sorted set by date
+            # if "date" in video_data:
+            #     timestamp = self.parse_date_string(video_data["date"])
+            #     self.redis_client.zadd("videos_by_date", {video_id: timestamp})
+            # Use date field as primary source
+            timestamp = None
             if "date" in video_data:
                 timestamp = self.parse_date_string(video_data["date"])
-                self.redis_client.zadd("videos_by_date", {video_id: timestamp})
+
+            if not timestamp and "author" in video_data:
+                timestamp = self.parse_date_string(video_data["author"])
+
+            # Fallback to scrape_time only if date is missing
+            if not timestamp and "scrape_time" in video_data:
+                try:
+                    timestamp = datetime.strptime(
+                        video_data["scrape_time"], "%Y-%m-%d %H:%M:%S"
+                    ).timestamp()
+                except:
+                    pass
+
+            # Last resort: current time
+            if not timestamp:
+                timestamp = time.time()
+
+            self.redis_client.zadd("videos_by_date", {video_id: timestamp})
 
             # Update tags index
             if "tags" in video_data:

@@ -301,27 +301,45 @@ function createVideoCard(video) {
     selectionIndicator.className = 'selection-indicator';
     selectionIndicator.textContent = '✓';
 
-    // Parse author string
-    let displayName = video.username; // Default to username from metadata
-    let relativeTime = video.author.split('·')[1];
-    if (video.author) {
-        // Try to extract the full name from the author string
-        const authorParts = video.author.split('·')[0]; // Get part before the dot
-        if (authorParts) {
-            // Check if authorParts contains the username
-            if (authorParts.includes(video.username)) {
-                // Remove the username portion to get the display name
-                displayName = authorParts.replace(video.username, '').trim();
-            } else {
-                // If no username found, use the whole authorParts
-                displayName = authorParts.trim();
-            }
+    // Parse author and date with fallback handling
+    let displayName = video.username; // Default to username
+    let relativeTime = ''; // Default to empty string
 
-            // If we ended up with an empty display name, fall back to username
-            if (!displayName) {
-                displayName = video.username;
+    // Handle author display name
+    if (video.author) {
+        if (video.author.includes('·')) {
+            // Old format with dot separator
+            const [authorPart, timePart] = video.author.split('·');
+            if (authorPart) {
+                displayName = authorPart.includes(video.username)
+                    ? authorPart.replace(video.username, '').trim()
+                    : authorPart.trim();
             }
+            // Use the time part from author if needed
+            if (timePart) {
+                relativeTime = timePart.trim();
+            }
+        } else {
+            // New format - just use author name
+            displayName = video.author;
         }
+    }
+
+    // Handle date display
+    if (video.date) {
+        if (video.date.match(/^\d{4}-\d{1,2}-\d{1,2}$/)) {
+            // Convert YYYY-MM-DD to readable format
+            const date = new Date(video.date);
+            relativeTime = date.toLocaleDateString();
+        } else {
+            // Use relative time format (e.g., "2d ago")
+            relativeTime = video.date;
+        }
+    }
+
+    // If displayName is empty, fallback to username
+    if (!displayName) {
+        displayName = video.username;
     }
 
     const videoContent = document.createElement('div');
@@ -342,7 +360,7 @@ function createVideoCard(video) {
         <div class="video-info">
             <div class="author-container">
                 <h3 class="author">${displayName}</h3>
-                <span class="time">${relativeTime}</span>
+                ${relativeTime ? `<span class="time">${relativeTime}</span>` : ''}
             </div>
             ${video.description ?
                 `<div class="video-description">${video.description.slice(0, 100)}...</div>` :

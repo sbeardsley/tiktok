@@ -30,21 +30,21 @@ services:
     depends_on:
       - redis
 
-  # url_discovery:
-  #   build:
-  #     context: .
-  #     dockerfile: services/discovery.Dockerfile
-  #     image: docker.codelinq.com/tiktok-url-discovery:latest
-  #   volumes:
-  #     - .:/app
-  #     - ./downloads:/app/downloads
-  #   environment:
-  #     - REDIS_HOST=redis
-  #   command: python services/url_discovery.py
-  #   networks:
-  #     - backup-network
-  #   depends_on:
-  #     - redis
+  url_discovery:
+    # build:
+    #   context: .
+    #   dockerfile: services/discovery.Dockerfile
+    image: docker.codelinq.com/tiktok-url-discovery:latest
+    volumes:
+      - .:/app
+      - ./downloads:/app/downloads
+    environment:
+      - REDIS_HOST=redis
+    command: python services/url_discovery.py
+    networks:
+      - backup-network
+    depends_on:
+      - redis
 
   # metadata:
   #   build:

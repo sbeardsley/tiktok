@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from datetime import datetime
 import time
 import redis
 import logging
@@ -41,10 +42,9 @@ class VideoDownloader:
     def parse_date_string(self, date_str: str) -> float:
         """Extract timestamp from date string like 'The Cheese Knees·2022-12-13'"""
         try:
-            # Split by '·' and take the last part which should be the date
-            date_part = date_str.split("·")[-1].strip()
-            # Convert to timestamp
-            return time.mktime(time.strptime(date_part, "%Y-%m-%d"))
+            if "·" in date_str:
+                date_str = date_str.split("·")[1].strip()
+            return datetime.strptime(date_str, "%Y-%m-%d").timestamp()
         except Exception as e:
             logger.error(f"Error parsing date '{date_str}', using current time: {e}")
             # Return current timestamp instead of 0
@@ -116,12 +116,35 @@ class VideoDownloader:
 
         # Update the sorted set with download time if no valid date exists
         video_data = self.redis_client.hgetall(redis_key)
-        if not video_data.get("date"):
-            self.redis_client.zadd("videos_by_date", {video_id: time.time()})
-        else:
-            # Ensure the video is in the sorted set with its proper date
+
+        # Use date field as primary source
+        timestamp = None
+        if "date" in video_data:
             timestamp = self.parse_date_string(video_data["date"])
-            self.redis_client.zadd("videos_by_date", {video_id: timestamp})
+
+        if not timestamp and "author" in video_data:
+            timestamp = self.parse_date_string(video_data["author"])
+
+        # Fallback to scrape_time only if date is missing
+        if not timestamp and "scrape_time" in video_data:
+            try:
+                timestamp = datetime.strptime(
+                    video_data["scrape_time"], "%Y-%m-%d %H:%M:%S"
+                ).timestamp()
+            except:
+                pass
+
+        # Last resort: current time
+        if not timestamp:
+            timestamp = time.time()
+
+        self.redis_client.zadd("videos_by_date", {video_id: timestamp})
+        # if not video_data.get("date"):
+        #     self.redis_client.zadd("videos_by_date", {video_id: time.time()})
+        # else:
+        #     # Ensure the video is in the sorted set with its proper date
+        #     timestamp = self.parse_date_string(video_data["date"])
+        #     self.redis_client.zadd("videos_by_date", {video_id: timestamp})
 
         # Remove file_missing flag when video is successfully downloaded
         self.redis_client.hdel(redis_key, "file_missing")

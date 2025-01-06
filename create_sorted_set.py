@@ -72,9 +72,16 @@ def fix_paths_and_create_sorted_set():
         if not video_id:
             continue
 
-        # Try to get timestamp from scrape_time first
+        # Use date field as primary source
         timestamp = None
-        if "scrape_time" in video_data:
+        if "date" in video_data:
+            timestamp = parse_date(video_data["date"])
+
+        if not timestamp and "author" in video_data:
+            timestamp = parse_date(video_data["author"])
+
+        # Fallback to scrape_time only if date is missing
+        if not timestamp and "scrape_time" in video_data:
             try:
                 timestamp = datetime.strptime(
                     video_data["scrape_time"], "%Y-%m-%d %H:%M:%S"
@@ -82,10 +89,7 @@ def fix_paths_and_create_sorted_set():
             except:
                 pass
 
-        # Fall back to date field if scrape_time failed
-        if not timestamp and "date" in video_data:
-            timestamp = parse_date(video_data["date"])
-
+        # Last resort: current time
         if not timestamp:
             timestamp = time.time()
 

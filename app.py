@@ -310,7 +310,7 @@ def get_videos():
                             "date": (
                                 video_data.get("date", "").split("·")[1]
                                 if "·" in video_data.get("date", "")
-                                else ""
+                                else video_data.get("date", "")
                             ),
                             "url": video_data.get("url", ""),
                         }
@@ -408,7 +408,7 @@ def get_videos():
                 "date": (
                     video_data.get("date", "").split("·")[1]
                     if "·" in video_data.get("date", "")
-                    else ""
+                    else video_data.get("date", "")
                 ),
                 "url": video_data.get("url", ""),
             }
@@ -592,9 +592,7 @@ def batch_delete_videos():
     """Delete multiple videos at once."""
     try:
         data = request.get_json()
-        videos_to_delete = data.get(
-            "video_ids", []
-        )  # Changed from "videos" to "video_ids" to match frontend
+        videos_to_delete = data.get("video_ids", [])
 
         if not videos_to_delete:
             return jsonify({"success": False, "error": "No videos specified"}), 400
@@ -620,6 +618,9 @@ def batch_delete_videos():
 
                 # Mark as deleted in Redis
                 redis_client.hset(metadata_key, "deleted", "True")
+
+                # Remove from videos_by_date sorted set
+                redis_client.zrem("videos_by_date", video_id)
 
                 success_count += 1
                 results.append({"video_id": video_id, "success": True})
@@ -737,19 +738,62 @@ def get_usernames():
 
 @app.route("/api/usernames", methods=["POST"])
 def add_username():
-    """Add a new username"""
+    """Add one or more usernames (comma-separated)"""
     try:
         data = request.get_json()
-        username = data.get("username", "").strip()
+        username_string = data.get("username", "").strip()
 
-        if not username:
-            return jsonify({"success": False, "error": "Username is required"}), 400
+        if not username_string:
+            return jsonify({"success": False, "error": "Username(s) required"}), 400
 
-        redis_client.sadd("all_usernames", username)
-        return jsonify({"success": True})
+        # Split by comma, clean up each username, and remove duplicates
+        usernames = list(
+            set(
+                [
+                    username.strip()
+                    for username in username_string.split(",")
+                    if username.strip()
+                ]
+            )
+        )
+
+        if not usernames:
+            return jsonify({"success": False, "error": "No valid usernames found"}), 400
+
+        # Get existing usernames from Redis
+        existing_usernames = redis_client.smembers("all_usernames")
+
+        # Filter out usernames that already exist
+        new_usernames = [u for u in usernames if u not in existing_usernames]
+        already_exists = [u for u in usernames if u in existing_usernames]
+
+        if not new_usernames:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "All usernames already exist",
+                        "existing": already_exists,
+                    }
+                ),
+                400,
+            )
+
+        # Add only new usernames to Redis
+        redis_client.sadd("all_usernames", *new_usernames)
+
+        return jsonify(
+            {
+                "success": True,
+                "added": len(new_usernames),
+                "usernames": new_usernames,
+                "skipped": already_exists,
+            }
+        )
+
     except Exception as e:
-        logger.error(f"Error adding username: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        logger.error(f"Error adding username(s): {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 @app.route("/api/usernames", methods=["DELETE"])

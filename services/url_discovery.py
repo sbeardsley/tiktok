@@ -250,6 +250,42 @@ class URLDiscoveryService:
             video_id = key.split(":")[-1]
             existing_ids.add(video_id)
 
+        # Check discovery queue for existing videos
+        queue_items = self.redis_client.lrange(QUEUE_KEY, 0, -1)
+        for item in queue_items:
+            try:
+                video_data = json.loads(item)
+                if video_data.get("username") == username:
+                    video_id = video_data.get("video_id")
+                    if video_id:
+                        existing_ids.add(video_id)
+            except json.JSONDecodeError:
+                continue
+
+        # Check metadata download queue
+        metadata_queue_items = self.redis_client.lrange("video_download_queue", 0, -1)
+        for item in metadata_queue_items:
+            try:
+                video_data = json.loads(item)
+                if video_data.get("username") == username:
+                    video_id = video_data.get("video_id")
+                    if video_id:
+                        existing_ids.add(video_id)
+            except json.JSONDecodeError:
+                continue
+
+        # NEW: Check video download queue
+        download_queue_items = self.redis_client.lrange("video_download_queue", 0, -1)
+        for item in download_queue_items:
+            try:
+                video_data = json.loads(item)
+                if video_data.get("username") == username:
+                    video_id = video_data.get("video_id")
+                    if video_id:
+                        existing_ids.add(video_id)
+            except json.JSONDecodeError:
+                continue
+
         logger.info(f"Found {len(existing_ids)} existing videos for user {username}")
         return existing_ids
 

@@ -9,10 +9,7 @@ class UsernameManager {
     }
 
     setupEventListeners() {
-        const form = document.getElementById('add-username-form');
-        if (form) {
-            form.addEventListener('submit', (e) => this.handleAddUsername(e));
-        }
+        document.getElementById('add-username').addEventListener('click', (e) => this.handleAddUsername(e));
     }
 
     async loadUsernames() {
@@ -48,11 +45,11 @@ class UsernameManager {
 
     async handleAddUsername(e) {
         e.preventDefault();
-        const input = document.getElementById('new-username');
+        const input = document.getElementById('username-input');
         const username = input.value.trim();
 
         if (!username) {
-            alert('Please enter a username');
+            alert('Please enter at least one username');
             return;
         }
 
