@@ -9,6 +9,14 @@
             <span class="toggle-icon">▼</span>
         </button>
 
+        <!-- Search input - Add this new section -->
+        <div class="search-container">
+            <input type="text"
+                   id="search-input"
+                   class="search-input"
+                   placeholder="Search videos...">
+        </div>
+
         <!-- Collapsible container -->
         <div id="filter-container" class="filter-container collapsed">
             <input type="text"
@@ -180,29 +188,38 @@
 }
 
 .filter-section {
-    margin-bottom: 1rem;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
 }
 
 .filter-toggle-btn {
-    width: 100%;
-    padding: 0.5rem;
-    background: #f0f0f0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    width: auto;
+    min-width: 100px;
 }
 
-.filter-toggle-btn:hover {
-    background: #e0e0e0;
+.search-container {
+    flex-grow: 1;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
 }
 
 .filter-container {
-    max-height: 1000px; /* Adjust as needed */
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
+    position: absolute;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 1rem;
+    margin-top: 0.5rem;
+    width: 300px;
+    z-index: 100;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .filter-container.collapsed {
@@ -508,6 +525,7 @@ body {
     max-width: 1200px;
     margin: 0 auto;
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 15px;
 }
@@ -635,6 +653,20 @@ body {
     border-radius: 4px;
 }
 </style>
+
+<style>
+[data-bs-toggle="collapse"] {
+    cursor: pointer;
+}
+
+[data-bs-toggle="collapse"] .bi-chevron-down {
+    transition: transform 0.2s;
+}
+
+[data-bs-toggle="collapse"][aria-expanded="true"] .bi-chevron-down {
+    transform: rotate(180deg);
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -686,5 +718,55 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 console.log('Filters:', window.allFilters);
 console.log('Videos:', window.allVideos);
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('search-input');
+    const videosGrid = document.querySelector('.videos-grid');
+
+    searchInput.addEventListener('input', debounce(function() {
+        const searchTerm = this.value.toLowerCase();
+
+        // If search is empty, show all videos
+        if (!searchTerm) {
+            window.filteredVideos = window.allVideos;
+            displayVideos(window.allVideos);
+            return;
+        }
+
+        // Show loading state
+        videosGrid.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+
+        // Call the search API
+        fetch(`/api/videos/search?q=${encodeURIComponent(searchTerm)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Search error:', data.error);
+                    return;
+                }
+                window.filteredVideos = data.videos;
+                displayVideos(data.videos);
+            })
+            .catch(error => {
+                console.error('Search request failed:', error);
+                videosGrid.innerHTML = '<div class="alert alert-danger">Search failed. Please try again.</div>';
+            });
+    }, 300));
+});
+
+// Debounce function to prevent too many rapid searches
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func.apply(this, args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
 </script>
 {% endblock %}

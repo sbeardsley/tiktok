@@ -12,6 +12,7 @@ from PIL import Image
 import time
 from dateutil import parser
 import logging
+from services.video_downloader import VideoDownloader
 
 # Setup logging
 logging.basicConfig(
@@ -105,10 +106,40 @@ def generate_thumbnail(video_path):
 def serve_thumbnail(thumbnail_path):
     """Serve thumbnail files, generating if needed."""
     full_thumb_path = Path("downloads") / thumbnail_path
-    video_path = full_thumb_path.parent / f"{full_thumb_path.stem}.mp4"
+    video_path = (
+        full_thumb_path.parent / f"{full_thumb_path.stem[:-6]}.mp4"
+    )  # Remove _thumb from stem
 
     if not full_thumb_path.exists() and video_path.exists():
-        if not generate_thumbnail(video_path):
+        try:
+            # Create VideoDownloader instance to use its thumbnail generation
+            downloader = VideoDownloader()
+            relative_thumb_path = downloader.generate_thumbnail(video_path)
+
+            if relative_thumb_path:
+                # Get username and video_id from path
+                parts = thumbnail_path.split("/")
+                if len(parts) >= 2:
+                    username = parts[0].replace("_videos", "")
+                    video_id = parts[1].split("_thumb")[0]
+
+                    # Update paths in Redis
+                    downloader.update_video_paths(
+                        username,
+                        video_id,
+                        str(video_path.relative_to(downloader.downloads_dir)),
+                        relative_thumb_path,
+                    )
+                    logger.info(f"Generated missing thumbnail for {video_id}")
+                else:
+                    logger.error(f"Invalid path format: {thumbnail_path}")
+                    return Response(status=404)
+            else:
+                logger.error(f"Failed to generate thumbnail for {video_path}")
+                return Response(status=404)
+
+        except Exception as e:
+            logger.error(f"Error generating thumbnail: {e}")
             return Response(status=404)
 
     if full_thumb_path.exists():
@@ -153,6 +184,28 @@ def queue():
     """Queue status dashboard route"""
     try:
         redis_status = redis_client.ping()
+
+        # Get all items from the discovery queue
+        queue_items = redis_client.lrange("tiktok_video_queue", 0, -1)
+        discovery_queue = {}
+
+        # Group items by username
+        for item in queue_items:
+            try:
+                video_data = json.loads(item)
+                username = video_data.get("username")
+                if username:
+                    if username not in discovery_queue:
+                        discovery_queue[username] = []
+                    discovery_queue[username].append(
+                        {
+                            "url": video_data.get("url"),
+                            "video_id": video_data.get("video_id"),
+                        }
+                    )
+            except json.JSONDecodeError:
+                continue
+
         status_data = {
             "status": "running",
             "redis_connected": redis_status,
@@ -167,9 +220,10 @@ def queue():
                 "failed_metadata": redis_client.llen("metadata_failed_queue"),
                 "failed_downloads": redis_client.llen("download_failed_queue"),
             },
+            "discovery_queue": discovery_queue,
         }
     except Exception as e:
-        print(f"Error in queue route: {e}")  # Add logging
+        logger.error(f"Error in queue route: {e}")  # Use logger instead of print
         status_data = {
             "status": "error",
             "redis_connected": False,
@@ -180,6 +234,7 @@ def queue():
                 "failed_metadata": 0,
                 "failed_downloads": 0,
             },
+            "discovery_queue": {},  # Add empty discovery queue in error case
         }
 
     return render_template("queue.html", data=status_data)
@@ -811,6 +866,142 @@ def delete_username():
     except Exception as e:
         logger.error(f"Error deleting username: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/tags")
+def tags():
+    """Tags dashboard route"""
+    try:
+        # Get all tags and their counts
+        tag_counts = {}
+        all_videos = redis_client.keys("metadata:*:*")
+
+        for video_key in all_videos:
+            try:
+                video_data = redis_client.hgetall(video_key)
+                if video_data and video_data.get("deleted") != "True":
+                    tags = json.loads(video_data.get("tags", "[]"))
+                    for tag in tags:
+                        tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            except json.JSONDecodeError:
+                continue
+
+        # Sort tags by count descending
+        sorted_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)
+
+        return render_template("tags.html", tags=sorted_tags)
+    except Exception as e:
+        logger.error(f"Error in tags route: {e}")
+        return render_template("tags.html", tags=[])
+
+
+@app.route("/api/videos/search")
+def search_videos():
+    """Search videos with support for @username and !@username operators"""
+    try:
+        search_query = request.args.get("q", "").lower()
+        page = int(request.args.get("page", 0))
+        per_page = int(request.args.get("per_page", 20))
+
+        # Split and categorize search terms
+        include_terms = []
+        exclude_terms = []
+        include_usernames = []
+        exclude_usernames = []
+
+        for term in search_query.split():
+            if term.startswith('!@'):
+                exclude_usernames.append(term[2:])  # Remove the !@ prefix
+            elif term.startswith('!'):
+                exclude_terms.append(term[1:])  # Remove the ! prefix
+            elif term.startswith('@'):
+                include_usernames.append(term[1:])  # Remove the @ prefix
+            else:
+                include_terms.append(term)
+
+        # Get all video metadata keys
+        all_videos = redis_client.keys("metadata:*:*")
+        matching_videos = []
+
+        for video_key in all_videos:
+            try:
+                video_data = redis_client.hgetall(video_key)
+                if not video_data or video_data.get("deleted") == "True":
+                    continue
+
+                # Prepare searchable text
+                author = video_data.get("author", "").lower()
+                description = video_data.get("description", "").lower()
+                tags = [tag.lower() for tag in json.loads(video_data.get("tags", "[]"))]
+                username = video_data.get("username", "").lower()
+                music = video_data.get("music", "").lower()
+
+                # Check username matches first
+                if include_usernames and not any(u in username for u in include_usernames):
+                    continue
+                if any(u in username for u in exclude_usernames):
+                    continue
+
+                # Check if ALL include terms match
+                matches = True
+                for term in include_terms:
+                    term_matches = (
+                        term in author or
+                        term in description or
+                        term in username or
+                        term in music or
+                        any(term in tag for tag in tags) or
+                        term in tags
+                    )
+                    if not term_matches:
+                        matches = False
+                        break
+
+                # Check if ANY exclude terms match
+                for term in exclude_terms:
+                    term_matches = (
+                        term in author or
+                        term in description or
+                        term in username or
+                        term in music or
+                        any(term in tag for tag in tags) or
+                        term in tags
+                    )
+                    if term_matches:
+                        matches = False
+                        break
+
+                if matches:
+                    username = video_data.get("username", "")
+                    matching_videos.append({
+                        "video_id": video_data["video_id"],
+                        "video_path": f"{username}_videos/{video_data['video_id']}.mp4",
+                        "thumbnail_path": f"{username}_videos/{video_data['video_id']}_thumb.jpg",
+                        "description": video_data.get("description", ""),
+                        "username": username,
+                        "tags": json.loads(video_data.get("tags", "[]")),
+                        "has_thumbnail": True,
+                        "author": video_data.get("author", ""),
+                        "music": video_data.get("music", ""),
+                        "date": video_data.get("date", ""),
+                        "url": video_data.get("url", ""),
+                    })
+
+            except json.JSONDecodeError:
+                continue
+
+        # Sort by date (newest first)
+        matching_videos.sort(key=lambda x: parse_date_string(x["date"]), reverse=True)
+
+        return jsonify({
+            "videos": matching_videos[page * per_page:(page + 1) * per_page],
+            "total": len(matching_videos),
+            "has_more": (page + 1) * per_page < len(matching_videos)
+        })
+
+    except Exception as e:
+        logger.error(f"Error in search: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

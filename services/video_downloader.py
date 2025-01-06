@@ -237,9 +237,29 @@ class VideoDownloader:
         video_filename = f"{video_id}.mp4"
         video_path = folder_path / video_filename
 
-        # Skip if video already exists
+        # If video exists, check/generate thumbnail
         if video_path.exists():
             logger.info(f"Video already exists: {video_path}")
+            thumbnail_path = video_path.parent / f"{video_path.stem}_thumb.jpg"
+
+            if not thumbnail_path.exists():
+                logger.info(f"Generating missing thumbnail for video: {video_id}")
+                thumbnail_path = self.generate_thumbnail(video_path)
+                if thumbnail_path:
+                    # Update video paths in Redis
+                    self.update_video_paths(
+                        username,
+                        video_id,
+                        str(video_path.relative_to(self.downloads_dir)),
+                        thumbnail_path,
+                    )
+                    logger.info(
+                        f"Successfully generated thumbnail for existing video: {video_id}"
+                    )
+                else:
+                    logger.error(
+                        f"Failed to generate thumbnail for existing video: {video_id}"
+                    )
             return
 
         try:

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Tags</h2>
+    <div class="row">
+        <div class="col">
+            {% for tag, count in tags %}
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center"
+                     data-bs-toggle="collapse"
+                     href="#tagContent{{ loop.index }}"
+                     role="button">
+                    <span>{{ tag }}</span>
+                    <span>
+                        <span class="badge bg-primary">{{ count }}</span>
+                        <i class="bi bi-chevron-down ms-2"></i>
+                    </span>
+                </div>
+                <div class="collapse" id="tagContent{{ loop.index }}">
+                    <div class="card-body">
+                        <div class="video-grid" data-tag="{{ tag }}">
+                            <!-- Videos will be loaded here via JavaScript -->
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('show.bs.collapse', function(e) {
+    const tagContent = e.target;
+    const videoGrid = tagContent.querySelector('.video-grid');
+    const tag = videoGrid.dataset.tag;
+
+    if (!videoGrid.dataset.loaded) {
+        fetch(`/api/videos?filters[]=${encodeURIComponent(tag)}&filter_type=and`)
+            .then(response => response.json())
+            .then(data => {
+                videoGrid.innerHTML = '';
+                data.videos.forEach(video => {
+                    videoGrid.innerHTML += `
+                        <div class="video-card">
+                            <a href="${video.url}" target="_blank">
+                                <img src="/thumbnail/${video.thumbnail_path}"
+                                     alt="${video.description}"
+                                     loading="lazy">
+                            </a>
+                            <div class="video-info">
+                                <div class="username">@${video.username}</div>
+                                <div class="description">${video.description}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                videoGrid.dataset.loaded = 'true';
+            });
+    }
+});
+</script>
+
+<style>
+.card-header {
+    cursor: pointer;
+}
+.card-header:hover {
+    background-color: rgba(0,0,0,0.03);
+}
+.card-header .bi-chevron-down {
+    transition: transform 0.2s;
+}
+.card-header[aria-expanded="true"] .bi-chevron-down {
+    transform: rotate(180deg);
+}
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+}
+.video-card {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.video-card img {
+    width: 100%;
+    aspect-ratio: 9/16;
+    object-fit: cover;
+}
+.video-info {
+    padding: 0.5rem;
+}
+.username {
+    font-weight: bold;
+}
+.description {
+    font-size: 0.9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+</style>
+{% endblock %}
