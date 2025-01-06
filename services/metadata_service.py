@@ -37,6 +37,62 @@ class MetadataService:
         self.FAILED_QUEUE = "metadata_failed_queue"
         self.PROCESSING_SET = "metadata_processing"
 
+        # Clean up and reprocess orphaned items at startup
+        self.handle_orphaned_processing()
+
+    def handle_orphaned_processing(self):
+        """Handle videos that were left in processing state from previous runs"""
+        try:
+            # Get all videos currently marked as processing
+            orphaned_videos = self.redis_client.smembers(self.PROCESSING_SET)
+
+            if orphaned_videos:
+                logger.info(
+                    f"Found {len(orphaned_videos)} orphaned videos in processing state"
+                )
+
+                for video_id in orphaned_videos:
+                    # Find the metadata key for this video_id
+                    matching_keys = self.redis_client.keys(f"metadata:*:{video_id}")
+                    if not matching_keys:
+                        logger.warning(
+                            f"No metadata found for orphaned video {video_id}"
+                        )
+                        self.redis_client.srem(self.PROCESSING_SET, video_id)
+                        continue
+
+                    try:
+                        # Get the video data
+                        metadata_key = matching_keys[0]
+                        video_data = self.redis_client.hgetall(metadata_key)
+
+                        # Remove from processing set
+                        self.redis_client.srem(self.PROCESSING_SET, video_id)
+
+                        # Check retry count
+                        retry_count = int(video_data.get("retry_count", 0))
+
+                        if retry_count >= self.max_retries:
+                            logger.info(
+                                f"Video {video_id} has exceeded retry limit, moving to failed queue"
+                            )
+                            self.redis_client.rpush(
+                                self.FAILED_QUEUE, json.dumps(video_data)
+                            )
+                        else:
+                            # Put back in queue for processing
+                            logger.info(
+                                f"Requeueing orphaned video {video_id} for processing"
+                            )
+                            self.redis_client.rpush(QUEUE_KEY, json.dumps(video_data))
+
+                    except Exception as e:
+                        logger.error(f"Error handling orphaned video {video_id}: {e}")
+                        self.redis_client.srem(self.PROCESSING_SET, video_id)
+
+        except Exception as e:
+            logger.error(f"Error handling orphaned processing videos: {e}")
+
     def setup_chrome_options(self) -> Options:
         """Set up Chrome options for scraping."""
         chrome_options = Options()

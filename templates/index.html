@@ -2,42 +2,50 @@
 
 {% block content %}
 <div class="header desktop-only">
-    <div class="filter-container">
-        <input type="text"
-               id="filter-input"
-               class="filter-input"
-               placeholder="Filter by tag...">
-        <div class="filter-toggles">
-            <label class="toggle-switch">
-                <input type="checkbox" id="or-filter-toggle">
-                <span class="toggle-slider"></span>
-                <span class="toggle-label">OR</span>
-            </label>
-            <label class="toggle-switch">
-                <input type="checkbox" id="not-filter-toggle">
-                <span class="toggle-slider"></span>
-                <span class="toggle-label">NOT</span>
-            </label>
-        </div>
-        <div id="tag-suggestions" class="tag-suggestions"></div>
-        <div id="selected-filters" class="selected-filters"></div>
-        <div id="batch-delete-container">
+    <div class="filter-section">
+        <!-- Collapse toggle button -->
+        <button id="filter-toggle" class="filter-toggle-btn">
+            <span>Filters</span>
+            <span class="toggle-icon">▼</span>
+        </button>
 
-            <div class="batch-actions">
-                <button id="select-visible-button" class="select-visible-button" onclick="selectVisibleVideos()">
-                    Select Visible
-                </button>
-                <div class="batch-tag-input-container">
-                    <input type="text"
-                           id="batch-tag-input"
-                           class="batch-tag-input"
-                           placeholder="Add tag to selected..."
-                           style="display: none;">
-                    <div id="batch-tag-suggestions" class="tag-suggestions"></div>
+        <!-- Collapsible container -->
+        <div id="filter-container" class="filter-container collapsed">
+            <input type="text"
+                   id="filter-input"
+                   class="filter-input"
+                   placeholder="Filter by tag...">
+            <div class="filter-toggles">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="or-filter-toggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">OR</span>
+                </label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="not-filter-toggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">NOT</span>
+                </label>
+            </div>
+            <div id="tag-suggestions" class="tag-suggestions"></div>
+            <div id="selected-filters" class="selected-filters"></div>
+            <div id="batch-delete-container">
+                <div class="batch-actions">
+                    <button id="select-visible-button" class="select-visible-button" onclick="selectVisibleVideos()">
+                        Select Visible
+                    </button>
+                    <div class="batch-tag-input-container">
+                        <input type="text"
+                               id="batch-tag-input"
+                               class="batch-tag-input"
+                               placeholder="Add tag to selected..."
+                               style="display: none;">
+                        <div id="batch-tag-suggestions" class="tag-suggestions"></div>
+                    </div>
+                    <button id="batch-delete-button" class="batch-delete-button" onclick="confirmBatchDelete()">
+                        Delete Selected (<span id="selected-count">0</span>)
+                    </button>
                 </div>
-                <button id="batch-delete-button" class="batch-delete-button" onclick="confirmBatchDelete()">
-                    Delete Selected (<span id="selected-count">0</span>)
-                </button>
             </div>
         </div>
     </div>
@@ -169,6 +177,44 @@
         display: none;
     }
     /* ... existing desktop styles ... */
+}
+
+.filter-section {
+    margin-bottom: 1rem;
+}
+
+.filter-toggle-btn {
+    width: 100%;
+    padding: 0.5rem;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.filter-toggle-btn:hover {
+    background: #e0e0e0;
+}
+
+.filter-container {
+    max-height: 1000px; /* Adjust as needed */
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.filter-container.collapsed {
+    max-height: 0;
+}
+
+.toggle-icon {
+    transition: transform 0.3s ease;
+}
+
+.toggle-icon.rotated {
+    transform: rotate(180deg);
 }
 </style>
 
@@ -593,14 +639,38 @@ body {
 
 {% block scripts %}
 <script>
-// Initialize empty arrays and sets
-window.filteredVideos = [];
-window.selectedFilters = new Set();
+    // Initialize empty arrays
+    window.allVideos = [];
+    window.filteredVideos = [];
+    window.selectedFilters = new Set();
+    window.allFilters = {{ filters|tojson }};
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
-});
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeApp();
+
+    const filterToggle = document.getElementById('filter-toggle');
+    const filterContainer = document.getElementById('filter-container');
+    const toggleIcon = filterToggle.querySelector('.toggle-icon');
+
+    filterToggle.addEventListener('click', function() {
+        filterContainer.classList.toggle('collapsed');
+        toggleIcon.classList.toggle('rotated');
+    });
+
+    // Optional: Show selected filter count in toggle button
+    const updateFilterCount = () => {
+        const selectedFilters = document.querySelectorAll('.selected-filters .filter-tag');
+        const count = selectedFilters.length;
+        filterToggle.querySelector('span').textContent =
+            `Filters ${count > 0 ? `(${count})` : ''}`;
+    };
+
+    // Call this whenever filters change
+    const observer = new MutationObserver(updateFilterCount);
+    observer.observe(document.getElementById('selected-filters'),
+        { childList: true, subtree: true });
+    });
 </script>
 <script src="{{ url_for('static', filename='js/video-browser.js') }}"></script>
 <script>

@@ -39,6 +39,66 @@ class VideoDownloader:
         # Create downloads directory if it doesn't exist
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
 
+        # Clean up and reprocess orphaned items at startup
+        self.handle_orphaned_processing()
+
+    def handle_orphaned_processing(self):
+        """Handle videos that were left in processing state from previous runs"""
+        try:
+            # Get all videos currently marked as processing
+            orphaned_videos = self.redis_client.smembers(self.PROCESSING_SET)
+
+            if orphaned_videos:
+                logger.info(
+                    f"Found {len(orphaned_videos)} orphaned downloads in processing state"
+                )
+
+                for video_id in orphaned_videos:
+                    # Find the metadata key for this video_id
+                    matching_keys = self.redis_client.keys(f"metadata:*:{video_id}")
+                    if not matching_keys:
+                        logger.warning(
+                            f"No metadata found for orphaned download {video_id}"
+                        )
+                        self.redis_client.srem(self.PROCESSING_SET, video_id)
+                        continue
+
+                    try:
+                        # Get the video data
+                        metadata_key = matching_keys[0]
+                        video_data = self.redis_client.hgetall(metadata_key)
+
+                        # Remove from processing set
+                        self.redis_client.srem(self.PROCESSING_SET, video_id)
+
+                        # Check retry count
+                        retry_count = int(video_data.get("retry_count", 0))
+
+                        if retry_count >= self.max_retries:
+                            logger.info(
+                                f"Video {video_id} has exceeded retry limit, moving to failed queue"
+                            )
+                            self.redis_client.rpush(
+                                self.FAILED_QUEUE, json.dumps(video_data)
+                            )
+                        else:
+                            # Put back in queue for processing
+                            logger.info(
+                                f"Requeueing orphaned download {video_id} for processing"
+                            )
+                            self.redis_client.rpush(
+                                DOWNLOAD_QUEUE_KEY, json.dumps(video_data)
+                            )
+
+                    except Exception as e:
+                        logger.error(
+                            f"Error handling orphaned download {video_id}: {e}"
+                        )
+                        self.redis_client.srem(self.PROCESSING_SET, video_id)
+
+        except Exception as e:
+            logger.error(f"Error handling orphaned processing downloads: {e}")
+
     def parse_date_string(self, date_str: str) -> float:
         """Extract timestamp from date string like 'The Cheese Knees·2022-12-13'"""
         try:

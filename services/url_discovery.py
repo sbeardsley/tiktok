@@ -39,29 +39,14 @@ class URLDiscoveryService:
             decode_responses=True,
         )
 
-    def get_known_video_ids(self) -> Set[str]:
-        """Get all video IDs we already have metadata for."""
-        known_ids = set()
-
-        for metadata_file in self.downloads_dir.rglob("metadata.json"):
-            try:
-                with open(metadata_file, "r", encoding="utf-8") as f:
-                    metadata = json.load(f)
-                    for video in metadata:
-                        if video.get("video_id"):
-                            known_ids.add(video["video_id"])
-            except Exception as e:
-                logger.error(f"Error reading {metadata_file}: {e}")
-
-        return known_ids
-
-    def read_usernames(self, filename="usernames.md") -> List[str]:
-        """Read usernames from file, skipping empty lines and stripping whitespace."""
+    def read_usernames(self) -> List[str]:
+        """Read usernames from Redis."""
         try:
-            with open(filename, "r") as f:
-                return [line.strip() for line in f if line.strip()]
+            usernames = self.redis_client.smembers("all_usernames")
+            logger.info(f"Found {len(usernames)} usernames in Redis")
+            return sorted(list(usernames))  # Return sorted list for consistency
         except Exception as e:
-            logger.error(f"Error reading usernames file: {e}")
+            logger.error(f"Error reading usernames from Redis: {e}")
             return []
 
     def setup_chrome_options(self) -> Options:
